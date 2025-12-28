@@ -10,6 +10,7 @@ const FeedView: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [followedUsers, setFollowedUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchPosts = async () => {
@@ -36,13 +37,27 @@ const FeedView: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (activeTab === 'following' && user) {
-        // 1. Get list of followed user IDs
+        // 1. Get list of followed users AND their profile info
         const { data: followsData, error: followsError } = await supabase
           .from('follows')
-          .select('following_id')
+          .select(`
+            following_id,
+            profiles:following_id (
+              id,
+              full_name,
+              username,
+              avatar_url
+            )
+          `)
           .eq('follower_id', user.id);
 
         if (followsError) throw followsError;
+
+        // Set the list of followed users for the UI
+        // Supabase returns an array of objects, where profiles is the joined data.
+        // We filter out any null profiles just in case.
+        const users = followsData.map((f: any) => f.profiles).filter(Boolean);
+        setFollowedUsers(users);
 
         const followingIds = followsData.map(f => f.following_id);
 
@@ -57,6 +72,7 @@ const FeedView: React.FC = () => {
         query = query.in('user_id', followingIds);
       } else if (activeTab === 'following' && !user) {
         setPosts([]);
+        setFollowedUsers([]);
         setLoading(false);
         return;
       }
@@ -102,7 +118,7 @@ const FeedView: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     }
-  }, [activeTab, user]); // Re-fetch when tab or user changes
+  }, [activeTab, user]);
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -132,21 +148,45 @@ const FeedView: React.FC = () => {
         </button>
       </div>
 
-      {/* Quick Create (Mini) */}
-      <div className="p-4 flex gap-3 border-b border-gray-50">
-        <div className="w-10 h-10 rounded-full bg-gray-200" />
-        <div className="flex-1">
-          <input
-            type="text"
-            placeholder="What's happening?"
-            className="w-full py-2 bg-transparent outline-none text-lg placeholder:text-gray-500"
-          />
-          <div className="flex items-center gap-4 mt-2 text-[#ff1744]">
-            <ImageIcon size={20} />
-            <Sparkles size={20} />
+      {/* Followed Users List (Horizontal Scroll) - Only on Following Tab */}
+      {activeTab === 'following' && followedUsers.length > 0 && (
+        <div className="px-4 py-3 border-b border-gray-50 overflow-x-auto whitespace-nowrap scrollbar-hide">
+          <div className="flex gap-4">
+            {followedUsers.map((u: any) => (
+              <div key={u.id} className="flex flex-col items-center gap-1 min-w-[64px]">
+                <div className="w-14 h-14 rounded-full p-[2px] bg-gradient-to-tr from-[#ff1744] to-purple-500">
+                  <img
+                    src={u.avatar_url || `https://ui-avatars.com/api/?name=${u.full_name}&background=random`}
+                    alt={u.username}
+                    className="w-full h-full rounded-full border-2 border-white object-cover"
+                  />
+                </div>
+                <span className="text-xs text-gray-600 truncate w-full text-center max-w-[70px]">
+                  {u.full_name?.split(' ')[0] || 'User'}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Quick Create (Mini) - Only on For You */}
+      {activeTab === 'foryou' && (
+        <div className="p-4 flex gap-3 border-b border-gray-50">
+          <div className="w-10 h-10 rounded-full bg-gray-200" />
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="What's happening?"
+              className="w-full py-2 bg-transparent outline-none text-lg placeholder:text-gray-500"
+            />
+            <div className="flex items-center gap-4 mt-2 text-[#ff1744]">
+              <ImageIcon size={20} />
+              <Sparkles size={20} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Feed List */}
       <div className="flex-1 overflow-y-auto">
@@ -162,7 +202,9 @@ const FeedView: React.FC = () => {
           ) : (
             <div className="p-8 text-center text-gray-500">
               {activeTab === 'following'
-                ? <p>You aren't following anyone yet or they haven't posted.</p>
+                ? (followedUsers.length > 0
+                  ? <p>The people you follow haven't posted yet.</p>
+                  : <p>You aren't following anyone yet.</p>)
                 : <p>No posts yet. be the first!</p>
               }
             </div>
