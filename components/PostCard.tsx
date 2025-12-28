@@ -1,0 +1,322 @@
+
+import React, { useState, useEffect } from 'react';
+import { Heart, MessageCircle, Repeat, Share, MoreHorizontal, BadgeCheck, Trash2, Edit2, Send, X } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { Post } from '../types';
+import { supabase } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
+
+interface PostCardProps {
+    post: Post;
+    onDelete?: (id: string) => void;
+}
+
+const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
+    const { user } = useAuth();
+    const [liked, setLiked] = useState(post.isLiked || false);
+    const [likeCount, setLikeCount] = useState(post.likes);
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    // Edit Mode
+    const [isEditing, setIsEditing] = useState(false);
+    const [editContent, setEditContent] = useState(post.content);
+
+    // Comments
+    const [showComments, setShowComments] = useState(false);
+    const [comments, setComments] = useState<any[]>([]);
+    const [newComment, setNewComment] = useState('');
+    const [commentCount, setCommentCount] = useState(post.comments);
+
+    // Check if current user is author (needs author ID in post type ideally, inferring from username for now or needs update)
+    // NOTE: In a real app, use IDs. Assuming post.author has an ID or we match username if unique.
+    // For safety, let's assume we need to match user ID properly. 
+    // Since Post type might not have authorId, we might be limited. 
+    // Let's assume we can compare usernames for this demo if ID is missing.
+    const isAuthor = user?.user_metadata?.username === post.author.username || user?.email?.split('@')[0] === post.author.username;
+
+    const handleLike = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!user) return;
+
+        // Optimistic update
+        const newLiked = !liked;
+        setLiked(newLiked);
+        setLikeCount(prev => newLiked ? prev + 1 : prev - 1);
+
+        try {
+            if (newLiked) {
+                await supabase.from('post_likes').insert({ post_id: post.id, user_id: user.id });
+            } else {
+                await supabase.from('post_likes').delete().eq('post_id', post.id).eq('user_id', user.id);
+            }
+        } catch (error) {
+            console.error("Error toggling like:", error);
+            // Revert on error
+            setLiked(!newLiked);
+            setLikeCount(prev => !newLiked ? prev + 1 : prev - 1);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!confirm("Delete this post?")) return;
+        try {
+            const { error } = await supabase.from('posts').delete().eq('id', post.id);
+            if (error) throw error;
+            if (onDelete) onDelete(post.id);
+        } catch (error) {
+            console.error("Error deleting post:", error);
+            alert("Could not delete post.");
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        try {
+            const { error } = await supabase
+                .from('posts')
+                .update({ content: editContent })
+                .eq('id', post.id);
+
+            if (error) throw error;
+            setIsEditing(false);
+        } catch (error) {
+            console.error("Error updating post:", error);
+            alert("Could not update post.");
+        }
+    };
+
+    const fetchComments = async () => {
+        if (!showComments) {
+            // Opening comments
+            const { data } = await supabase
+                .from('comments')
+                .select('*, profiles(full_name, avatar_url, username)')
+                .eq('post_id', post.id)
+                .order('created_at', { ascending: true });
+            if (data) setComments(data);
+        }
+        setShowComments(!showComments);
+    };
+
+    const handlePostComment = async () => {
+        if (!newComment.trim() || !user) return;
+        try {
+            const { data, error } = await supabase
+                .from('comments')
+                .insert({ post_id: post.id, user_id: user.id, content: newComment.trim() })
+                .select('*, profiles(full_name, avatar_url, username)')
+                .single();
+
+            if (error) throw error;
+
+            setComments([...comments, data]);
+            setNewComment('');
+            setCommentCount(prev => prev + 1);
+        } catch (error) {
+            console.error("Error posting comment:", error);
+        }
+    };
+
+    const handleDeleteComment = async (commentId: string) => {
+        try {
+            const { error } = await supabase.from('comments').delete().eq('id', commentId);
+            if (error) throw error;
+            setComments(comments.filter(c => c.id !== commentId));
+            setCommentCount(prev => prev - 1);
+        } catch (error) {
+            console.error("Error deleting comment:", error);
+        }
+    };
+
+    return (
+        <article className="p-4 border-b border-gray-50 bg-white hover:bg-gray-50/30 transition-colors">
+            <div className="flex gap-3">
+                <div className="flex-shrink-0">
+                    <img
+                        src={post.author.avatar || `https://ui-avatars.com/api/?name=${post.author.name}&background=random`}
+                        alt={post.author.name}
+                        className="w-10 h-10 rounded-full object-cover border border-gray-100"
+                    />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between relative">
+                        <div className="flex items-center gap-1 overflow-hidden">
+                            <span className="font-bold text-gray-900 truncate">{post.author.name}</span>
+                            {post.author.isVerified && <BadgeCheck size={16} className="text-[#ff1744] flex-shrink-0" />}
+                            <span className="text-gray-500 text-sm truncate">@{post.author.username}</span>
+                            <span className="text-gray-400 text-sm mx-1">·</span>
+                            <span className="text-gray-500 text-sm flex-shrink-0">{post.timestamp}</span>
+                        </div>
+
+                        {/* More Menu */}
+                        {isAuthor && (
+                            <div className="relative">
+                                <button
+                                    onClick={() => setMenuOpen(!menuOpen)}
+                                    className="text-gray-400 hover:text-gray-600 p-1 -mr-2 rounded-full hover:bg-gray-100"
+                                >
+                                    <MoreHorizontal size={18} />
+                                </button>
+                                {menuOpen && (
+                                    <div className="absolute right-0 top-6 w-32 bg-white shadow-lg rounded-xl border border-gray-100 p-1 z-10 animate-in fade-in zoom-in-95 duration-200">
+                                        <button
+                                            onClick={() => { setIsEditing(true); setMenuOpen(false); }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                                        >
+                                            <Edit2 size={14} /> Edit
+                                        </button>
+                                        <button
+                                            onClick={() => { handleDelete(); setMenuOpen(false); }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg text-left"
+                                        >
+                                            <Trash2 size={14} /> Delete
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Content Area */}
+                    {isEditing ? (
+                        <div className="mt-2">
+                            <textarea
+                                value={editContent}
+                                onChange={(e) => setEditContent(e.target.value)}
+                                className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#ff1744] outline-none min-h-[100px]"
+                            />
+                            <div className="flex justify-end gap-2 mt-2">
+                                <button
+                                    onClick={() => setIsEditing(false)}
+                                    className="px-3 py-1.5 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveEdit}
+                                    className="px-3 py-1.5 text-sm font-bold text-white bg-[#ff1744] hover:bg-red-600 rounded-lg"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-gray-900 mt-1 whitespace-pre-wrap leading-normal text-[15px]">
+                            {isEditing ? editContent : post.content}
+                        </p>
+                    )}
+
+                    {post.media && !isEditing && (
+                        <div className="mt-3 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                            <img src={post.media} alt="Post content" className="w-full h-auto max-h-[400px] object-cover" />
+                        </div>
+                    )}
+
+                    {/* Action Bar */}
+                    <div className="flex items-center justify-between mt-3 text-gray-500 max-w-md">
+                        <button
+                            onClick={fetchComments}
+                            className={cn("flex items-center gap-2 group transition-colors text-sm", showComments ? "text-blue-500" : "hover:text-blue-500")}
+                        >
+                            <div className="p-2 rounded-full group-hover:bg-blue-50 transition-colors">
+                                <MessageCircle size={18} className={cn(showComments && "fill-current")} />
+                            </div>
+                            <span>{commentCount}</span>
+                        </button>
+
+                        <button className="flex items-center gap-2 group hover:text-green-500 transition-colors text-sm">
+                            <div className="p-2 rounded-full group-hover:bg-green-50 transition-colors">
+                                <Repeat size={18} />
+                            </div>
+                            <span>{post.reposts}</span>
+                        </button>
+
+                        <button
+                            onClick={handleLike}
+                            className={cn(
+                                "flex items-center gap-2 group transition-colors text-sm",
+                                liked ? "text-[#ff1744]" : "hover:text-[#ff1744]"
+                            )}
+                        >
+                            <div className="p-2 rounded-full group-hover:bg-red-50 transition-colors">
+                                <Heart size={18} className={cn(liked && "fill-current")} />
+                            </div>
+                            <span>{likeCount}</span>
+                        </button>
+
+                        <button className="flex items-center gap-2 group hover:text-blue-500 transition-colors text-sm">
+                            <div className="p-2 rounded-full group-hover:bg-blue-50 transition-colors">
+                                <Share size={18} />
+                            </div>
+                        </button>
+                    </div>
+
+                    {/* Comments Section */}
+                    {showComments && (
+                        <div className="mt-4 pt-4 border-t border-gray-50 animate-in slide-in-from-top-2">
+                            {/* Comment Input */}
+                            <div className="flex gap-3 mb-4">
+                                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 overflow-hidden">
+                                    {user?.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />}
+                                </div>
+                                <div className="flex-1 relative">
+                                    <input
+                                        type="text"
+                                        value={newComment}
+                                        onChange={(e) => setNewComment(e.target.value)}
+                                        placeholder="Post your reply"
+                                        className="w-full pl-4 pr-10 py-2 bg-gray-50 rounded-full text-sm outline-none focus:ring-1 focus:ring-[#ff1744] transition-all"
+                                        onKeyDown={(e) => e.key === 'Enter' && handlePostComment()}
+                                    />
+                                    <button
+                                        onClick={handlePostComment}
+                                        disabled={!newComment.trim()}
+                                        className="absolute right-1 top-1 p-1.5 text-[#ff1744] hover:bg-red-50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Send size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Comments List */}
+                            <div className="space-y-4">
+                                {comments.map(comment => (
+                                    <div key={comment.id} className="flex gap-3 group">
+                                        <img
+                                            src={comment.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${comment.profiles?.full_name}`}
+                                            className="w-8 h-8 rounded-full object-cover border border-gray-100"
+                                        />
+                                        <div className="flex-1">
+                                            <div className="bg-gray-50 rounded-2xl p-3 px-4 relative">
+                                                <div className="flex justify-between items-start">
+                                                    <span className="font-bold text-sm text-gray-900">{comment.profiles?.full_name}</span>
+                                                    {user && user.id === comment.user_id && (
+                                                        <button
+                                                            onClick={() => handleDeleteComment(comment.id)}
+                                                            className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <p className="text-sm text-gray-700 mt-0.5">{comment.content}</p>
+                                            </div>
+                                            <div className="flex items-center gap-4 mt-1 ml-2">
+                                                <span className="text-xs text-gray-400">{new Date(comment.created_at).toLocaleDateString()}</span>
+                                                <button className="text-xs font-bold text-gray-500 hover:text-gray-900">Like</button>
+                                                <button className="text-xs font-bold text-gray-500 hover:text-gray-900">Reply</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            </div>
+        </article>
+    );
+};
+
+export default PostCard;

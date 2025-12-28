@@ -1,0 +1,9 @@
+
+{
+  "name": "VoxSpace",
+  "description": "A high-performance social platform with real-time chats, audio spaces, and AI-powered feed discovery.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
