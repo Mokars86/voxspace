@@ -15,6 +15,8 @@ interface ProfileData {
   website: string;
   is_verified: boolean;
   created_at: string;
+  followers_count: number;
+  following_count: number;
 }
 
 const ProfileView: React.FC = () => {
@@ -138,11 +140,11 @@ const ProfileView: React.FC = () => {
 
           <div className="flex gap-4 text-sm mb-4">
             <div>
-              <span className="font-bold text-gray-900">0</span>{' '}
+              <span className="font-bold text-gray-900">{(displayProfile as any).following_count || 0}</span>{' '}
               <span className="text-gray-500">Following</span>
             </div>
             <div>
-              <span className="font-bold text-gray-900">0</span>{' '}
+              <span className="font-bold text-gray-900">{(displayProfile as any).followers_count || 0}</span>{' '}
               <span className="text-gray-500">Followers</span>
             </div>
           </div>

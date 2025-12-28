@@ -21,17 +21,19 @@ const UserProfile: React.FC = () => {
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
 
-    const [profile, setProfile] = useState<ProfileData | null>(null);
+    const [profile, setProfile] = useState<ProfileData & { followers_count: number; following_count: number } | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [followLoading, setFollowLoading] = useState(false);
     const [messingLoading, setMessagingLoading] = useState(false);
 
     useEffect(() => {
-        const fetchProfile = async () => {
+        const fetchProfileData = async () => {
             if (!id) return;
             setLoading(true);
             try {
-                // Fetch Profile
+                // 1. Fetch Profile
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('*')
@@ -41,7 +43,19 @@ const UserProfile: React.FC = () => {
                 if (error) throw error;
                 setProfile(data);
 
-                // Fetch Posts
+                // 2. Check Follow Status (if logged in and not own profile)
+                if (currentUser && currentUser.id !== id) {
+                    const { data: followData } = await supabase
+                        .from('follows')
+                        .select('follower_id')
+                        .eq('follower_id', currentUser.id)
+                        .eq('following_id', id)
+                        .maybeSingle();
+
+                    setIsFollowing(!!followData);
+                }
+
+                // 3. Fetch Posts
                 const { data: postsData, error: postsError } = await supabase
                     .from('posts')
                     .select('*')
@@ -74,23 +88,60 @@ const UserProfile: React.FC = () => {
             }
         };
 
-        fetchProfile();
-    }, [id]);
+        fetchProfileData();
+    }, [id, currentUser]);
+
+    const handleFollowToggle = async () => {
+        if (!currentUser || !id || followLoading) return;
+        setFollowLoading(true);
+
+        const isNowFollowing = !isFollowing;
+        // Optimistic UI Update
+        setIsFollowing(isNowFollowing);
+        setProfile(prev => prev ? ({
+            ...prev,
+            followers_count: prev.followers_count + (isNowFollowing ? 1 : -1)
+        }) : null);
+
+        try {
+            if (isNowFollowing) {
+                // Follow
+                const { error } = await supabase
+                    .from('follows')
+                    .insert({ follower_id: currentUser.id, following_id: id });
+                if (error) throw error;
+            } else {
+                // Unfollow
+                const { error } = await supabase
+                    .from('follows')
+                    .delete()
+                    .eq('follower_id', currentUser.id)
+                    .eq('following_id', id);
+                if (error) throw error;
+            }
+        } catch (error) {
+            console.error("Error updating follow status:", error);
+            // Revert changes on error
+            setIsFollowing(!isNowFollowing);
+            setProfile(prev => prev ? ({
+                ...prev,
+                followers_count: prev.followers_count + (isNowFollowing ? -1 : 1)
+            }) : null);
+            alert("Failed to update follow status.");
+        } finally {
+            setFollowLoading(false);
+        }
+    };
 
     const handleMessage = async () => {
         if (!currentUser || !id) return;
         setMessagingLoading(true);
         try {
-            // Check if conversation exists (Simplified: just create new for now)
-
-            // Use RPC to safely create chat on server side
             const { data: chatId, error: rpcError } = await supabase
                 .rpc('create_direct_chat', { other_user_id: id });
 
             if (rpcError) throw rpcError;
-
             navigate(`/chat/${chatId}`);
-
         } catch (error: any) {
             console.error("Error starting chat:", error);
             alert(`Could not start chat: ${error.message || JSON.stringify(error)}`);
@@ -120,26 +171,51 @@ const UserProfile: React.FC = () => {
                         alt="Profile"
                         className="w-20 h-20 rounded-full border-4 border-white object-cover shadow-sm bg-white"
                     />
-                    {isOwnProfile ? (
-                        <button onClick={() => navigate('/edit-profile')} className="px-4 py-1.5 border border-gray-300 rounded-full font-bold text-sm hover:bg-gray-50">
-                            Edit Profile
-                        </button>
-                    ) : (
-                        <button
-                            onClick={handleMessage}
-                            disabled={messingLoading}
-                            className="px-4 py-1.5 bg-[#ff1744] text-white rounded-full font-bold text-sm hover:bg-red-600 flex items-center gap-2 shadow-sm active:scale-95 transition-all"
-                        >
-                            {messingLoading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-                            Message
-                        </button>
-                    )}
+                    <div className="flex gap-2">
+                        {isOwnProfile ? (
+                            <button onClick={() => navigate('/edit-profile')} className="px-4 py-1.5 border border-gray-300 rounded-full font-bold text-sm hover:bg-gray-50">
+                                Edit Profile
+                            </button>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={handleMessage}
+                                    disabled={messingLoading}
+                                    className="p-2 border border-gray-200 rounded-full text-gray-600 hover:bg-gray-50 flex items-center justify-center"
+                                >
+                                    {messingLoading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={18} />}
+                                </button>
+                                <button
+                                    onClick={handleFollowToggle}
+                                    disabled={followLoading}
+                                    className={`px-6 py-1.5 rounded-full font-bold text-sm flex items-center justify-center min-w-[100px] transition-all
+                                        ${isFollowing
+                                            ? "bg-white border border-gray-300 text-gray-900 hover:bg-gray-50"
+                                            : "bg-gray-900 text-white hover:bg-gray-800"
+                                        }`}
+                                >
+                                    {followLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowing ? "Following" : "Follow")}
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">{profile.full_name}</h1>
                     <p className="text-gray-500 text-sm mb-3">@{profile.username}</p>
                     <p className="text-gray-900 mb-3 whitespace-pre-wrap">{profile.bio || "No bio yet."}</p>
+
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="flex items-center gap-1">
+                            <span className="font-bold text-gray-900">{profile.following_count || 0}</span>
+                            <span className="text-gray-500 text-sm">Following</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <span className="font-bold text-gray-900">{profile.followers_count || 0}</span>
+                            <span className="text-gray-500 text-sm">Followers</span>
+                        </div>
+                    </div>
 
                     <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500 mb-4">
                         <div className="flex items-center gap-1"><Calendar size={16} /> Joined {new Date(profile.created_at).toLocaleDateString()}</div>

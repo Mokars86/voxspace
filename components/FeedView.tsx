@@ -4,8 +4,10 @@ import PostCard from './PostCard';
 import { Post } from '../types';
 import { cn } from '../lib/utils';
 import { supabase } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
 
 const FeedView: React.FC = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -13,24 +15,53 @@ const FeedView: React.FC = () => {
   const fetchPosts = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('posts')
         .select(`
-                  id,
-                  content,
-                  media_url,
-                  created_at,
-                  likes_count,
-                  comments_count,
-                  reposts_count,
-                  profiles:user_id (
-                      full_name,
-                      username,
-                      avatar_url,
-                      is_verified
-                  )
-              `)
+            id,
+            content,
+            media_url,
+            created_at,
+            likes_count,
+            comments_count,
+            reposts_count,
+            user_id,
+            profiles:user_id (
+                full_name,
+                username,
+                avatar_url,
+                is_verified
+            )
+        `)
         .order('created_at', { ascending: false });
+
+      if (activeTab === 'following' && user) {
+        // 1. Get list of followed user IDs
+        const { data: followsData, error: followsError } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', user.id);
+
+        if (followsError) throw followsError;
+
+        const followingIds = followsData.map(f => f.following_id);
+
+        // If following no one, return empty
+        if (followingIds.length === 0) {
+          setPosts([]);
+          setLoading(false);
+          return;
+        }
+
+        // 2. Filter posts by these IDs
+        query = query.in('user_id', followingIds);
+      } else if (activeTab === 'following' && !user) {
+        setPosts([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -43,7 +74,7 @@ const FeedView: React.FC = () => {
           isVerified: item.profiles?.is_verified || false,
         },
         content: item.content,
-        timestamp: new Date(item.created_at).toLocaleDateString(), // Simplified time
+        timestamp: new Date(item.created_at).toLocaleDateString(),
         likes: item.likes_count || 0,
         comments: item.comments_count || 0,
         reposts: item.reposts_count || 0,
@@ -61,7 +92,6 @@ const FeedView: React.FC = () => {
   useEffect(() => {
     fetchPosts();
 
-    // realtime subscription could go here
     const channel = supabase
       .channel('public:posts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' },
@@ -72,7 +102,7 @@ const FeedView: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     }
-  }, []);
+  }, [activeTab, user]); // Re-fetch when tab or user changes
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -131,7 +161,10 @@ const FeedView: React.FC = () => {
             ))
           ) : (
             <div className="p-8 text-center text-gray-500">
-              <p>No posts yet. be the first!</p>
+              {activeTab === 'following'
+                ? <p>You aren't following anyone yet or they haven't posted.</p>
+                : <p>No posts yet. be the first!</p>
+              }
             </div>
           )
         )}
