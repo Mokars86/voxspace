@@ -16,6 +16,7 @@ import SpaceChatRoom from './pages/spaces/SpaceChatRoom';
 import PrivacySettings from './pages/settings/PrivacySettings';
 import SecuritySettings from './pages/settings/SecuritySettings';
 import AppearanceSettings from './pages/settings/AppearanceSettings';
+import NotificationSettings from './pages/settings/NotificationSettings';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, profile, loading } = useAuth();
@@ -59,6 +60,14 @@ const App: React.FC = () => {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/notifications"
+        element={
+          <ProtectedRoute>
+            <NotificationSettings />
           </ProtectedRoute>
         }
       />

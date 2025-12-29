@@ -13,15 +13,15 @@ const Settings: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-white">
-            <header className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 z-10">
-                <button onClick={() => navigate(-1)} className="text-gray-600">
+        <div className="flex flex-col h-screen bg-white dark:bg-gray-900 transition-colors">
+            <header className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 z-10 bg-white dark:bg-gray-900 sticky top-0">
+                <button onClick={() => navigate(-1)} className="text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-full">
                     <ArrowLeft size={24} />
                 </button>
-                <h1 className="text-xl font-bold">Settings</h1>
+                <h1 className="text-xl font-bold dark:text-white">Settings</h1>
             </header>
 
-            <div className="flex-1 overflow-y-auto bg-gray-50">
+            <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
                 <div className="p-4 space-y-6">
 
                     <SettingsSection title="Account">
@@ -37,9 +37,11 @@ const Settings: React.FC = () => {
                     </SettingsSection>
 
                     <SettingsSection title="Preferences">
-                        <SettingsItem icon={<Bell size={20} />} label="Notifications" />
+                        <div onClick={() => navigate('/settings/notifications')}>
+                            <SettingsItem icon={<Bell size={20} />} label="Notifications" />
+                        </div>
                         <div onClick={() => navigate('/settings/appearance')}>
-                            <SettingsItem icon={<Moon size={20} />} label="Appearance" value="Light" />
+                            <SettingsItem icon={<Moon size={20} />} label="Appearance" value="Mode" />
                         </div>
                         <SettingsItem icon={<Globe size={20} />} label="Language" value="English" />
                     </SettingsSection>
@@ -50,7 +52,7 @@ const Settings: React.FC = () => {
 
                     <button
                         onClick={handleLogout}
-                        className="w-full bg-white p-4 rounded-2xl flex items-center gap-3 text-red-600 font-bold shadow-sm active:scale-[0.98] transition-all"
+                        className="w-full bg-white dark:bg-gray-900 p-4 rounded-2xl flex items-center gap-3 text-red-600 font-bold shadow-sm active:scale-[0.98] transition-all hover:bg-red-50 dark:hover:bg-red-900/10"
                     >
                         <LogOut size={20} />
                         Log Out
@@ -68,21 +70,21 @@ const Settings: React.FC = () => {
 const SettingsSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
     <div>
         <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 ml-2">{title}</h3>
-        <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-50">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-50 dark:divide-gray-800">
             {children}
         </div>
     </div>
 );
 
 const SettingsItem = ({ icon, label, value }: { icon: React.ReactNode, label: string, value?: string }) => (
-    <button className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+    <button className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
         <div className="flex items-center gap-3">
-            <div className="text-gray-400">{icon}</div>
-            <span className="font-medium text-gray-900">{label}</span>
+            <div className="text-gray-400 dark:text-gray-500">{icon}</div>
+            <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
         </div>
         <div className="flex items-center gap-2">
-            {value && <span className="text-sm text-gray-400">{value}</span>}
-            <ChevronRight size={18} className="text-gray-300" />
+            {value && <span className="text-sm text-gray-400 dark:text-gray-500">{value}</span>}
+            <ChevronRight size={18} className="text-gray-300 dark:text-gray-600" />
         </div>
     </button>
 );

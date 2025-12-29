@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PenLine, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
 import PostCard from './PostCard';
+import StoryBar from './StoryBar';
 import { Post } from '../types';
 import { cn } from '../lib/utils';
 import { supabase } from '../services/supabase';
@@ -121,14 +122,14 @@ const FeedView: React.FC = () => {
   }, [activeTab, user]);
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
       {/* Header Tabs */}
-      <div className="flex border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-sm z-10 pt-2">
+      <div className="flex border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm z-10 pt-2">
         <button
           onClick={() => setActiveTab('foryou')}
           className="flex-1 py-3 text-center relative"
         >
-          <span className={cn("font-bold text-[15px]", activeTab === 'foryou' ? "text-gray-900" : "text-gray-500")}>
+          <span className={cn("font-bold text-[15px]", activeTab === 'foryou' ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400")}>
             For you
           </span>
           {activeTab === 'foryou' && (
@@ -139,7 +140,7 @@ const FeedView: React.FC = () => {
           onClick={() => setActiveTab('following')}
           className="flex-1 py-3 text-center relative"
         >
-          <span className={cn("font-bold text-[15px]", activeTab === 'following' ? "text-gray-900" : "text-gray-500")}>
+          <span className={cn("font-bold text-[15px]", activeTab === 'following' ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400")}>
             Following
           </span>
           {activeTab === 'following' && (
@@ -147,6 +148,15 @@ const FeedView: React.FC = () => {
           )}
         </button>
       </div>
+
+      {/* Stories - Visible on both tabs or just one? Usually visible on top of 'For You' or global. */}
+      {/* WhatsApp Status style usually implies a separate tab, but here requested on feed. */}
+      {/* Best place: Top of 'For You' list. */}
+      {activeTab === 'foryou' && (
+        <div className="border-b border-gray-50 dark:border-gray-800">
+          <StoryBar />
+        </div>
+      )}
 
       {/* Followed Users List (Horizontal Scroll) - Only on Following Tab */}
       {activeTab === 'following' && followedUsers.length > 0 && (
@@ -172,13 +182,13 @@ const FeedView: React.FC = () => {
 
       {/* Quick Create (Mini) - Only on For You */}
       {activeTab === 'foryou' && (
-        <div className="p-4 flex gap-3 border-b border-gray-50">
-          <div className="w-10 h-10 rounded-full bg-gray-200" />
+        <div className="p-4 flex gap-3 border-b border-gray-50 dark:border-gray-800">
+          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700" />
           <div className="flex-1">
             <input
               type="text"
               placeholder="What's happening?"
-              className="w-full py-2 bg-transparent outline-none text-lg placeholder:text-gray-500"
+              className="w-full py-2 bg-transparent outline-none text-lg placeholder:text-gray-500 dark:text-white dark:placeholder:text-gray-400"
             />
             <div className="flex items-center gap-4 mt-2 text-[#ff1744]">
               <ImageIcon size={20} />

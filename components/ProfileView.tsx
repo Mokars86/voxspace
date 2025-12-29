@@ -100,7 +100,7 @@ const ProfileView: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
       {/* Header/Cover */}
       <div className="h-32 bg-gradient-to-r from-pink-500 to-orange-500 relative">
         <button onClick={() => navigate('/settings')} className="absolute top-4 right-4 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm hover:bg-black/30 transition-colors">
@@ -114,24 +114,24 @@ const ProfileView: React.FC = () => {
           <img
             src={displayProfile.avatar_url || `https://ui-avatars.com/api/?name=${displayProfile.full_name || 'User'}&background=random`}
             alt="Profile"
-            className="w-20 h-20 rounded-full border-4 border-white object-cover"
+            className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-900 object-cover"
           />
           <button
             onClick={() => navigate('/settings')}
-            className="px-4 py-1.5 border border-gray-300 rounded-full font-bold text-sm hover:bg-gray-50 transition-colors"
+            className="px-4 py-1.5 border border-gray-300 dark:border-gray-700 rounded-full font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-800 dark:text-gray-200 transition-colors"
           >
             Edit Profile
           </button>
         </div>
 
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{displayProfile.full_name}</h1>
-          <p className="text-gray-500 text-sm mb-3">@{displayProfile.username}</p>
-          <p className="text-gray-900 mb-3 whitespace-pre-wrap">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{displayProfile.full_name}</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">@{displayProfile.username}</p>
+          <p className="text-gray-900 dark:text-gray-100 mb-3 whitespace-pre-wrap">
             {displayProfile.bio || "No bio yet."}
           </p>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500 mb-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
             <div className="flex items-center gap-1">
               <Calendar size={16} />
               Joined {new Date(displayProfile.created_at).toLocaleDateString()}
@@ -140,34 +140,34 @@ const ProfileView: React.FC = () => {
 
           <div className="flex gap-4 text-sm mb-4">
             <div>
-              <span className="font-bold text-gray-900">{(displayProfile as any).following_count || 0}</span>{' '}
-              <span className="text-gray-500">Following</span>
+              <span className="font-bold text-gray-900 dark:text-white">{(displayProfile as any).following_count || 0}</span>{' '}
+              <span className="text-gray-500 dark:text-gray-400">Following</span>
             </div>
             <div>
-              <span className="font-bold text-gray-900">{(displayProfile as any).followers_count || 0}</span>{' '}
-              <span className="text-gray-500">Followers</span>
+              <span className="font-bold text-gray-900 dark:text-white">{(displayProfile as any).followers_count || 0}</span>{' '}
+              <span className="text-gray-500 dark:text-gray-400">Followers</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-100 sticky top-0 bg-white z-10">
-        <button onClick={() => setActiveTab('posts')} className="flex-1 py-3 relative hover:bg-gray-50 transition-colors">
-          <div className="flex justify-center items-center gap-2 text-gray-600">
-            <Grid size={20} className={activeTab === 'posts' ? "text-gray-900" : ""} />
+      <div className="flex border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10 transition-colors">
+        <button onClick={() => setActiveTab('posts')} className="flex-1 py-3 relative hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          <div className="flex justify-center items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Grid size={20} className={activeTab === 'posts' ? "text-gray-900 dark:text-white" : ""} />
           </div>
           {activeTab === 'posts' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-[#ff1744] rounded-full" />}
         </button>
-        <button onClick={() => setActiveTab('media')} className="flex-1 py-3 relative hover:bg-gray-50 transition-colors">
-          <div className="flex justify-center items-center gap-2 text-gray-600">
-            <Image size={20} className={activeTab === 'media' ? "text-gray-900" : ""} />
+        <button onClick={() => setActiveTab('media')} className="flex-1 py-3 relative hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          <div className="flex justify-center items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Image size={20} className={activeTab === 'media' ? "text-gray-900 dark:text-white" : ""} />
           </div>
           {activeTab === 'media' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-[#ff1744] rounded-full" />}
         </button>
-        <button onClick={() => setActiveTab('likes')} className="flex-1 py-3 relative hover:bg-gray-50 transition-colors">
-          <div className="flex justify-center items-center gap-2 text-gray-600">
-            <Heart size={20} className={activeTab === 'likes' ? "text-gray-900" : ""} />
+        <button onClick={() => setActiveTab('likes')} className="flex-1 py-3 relative hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+          <div className="flex justify-center items-center gap-2 text-gray-600 dark:text-gray-400">
+            <Heart size={20} className={activeTab === 'likes' ? "text-gray-900 dark:text-white" : ""} />
           </div>
           {activeTab === 'likes' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-[#ff1744] rounded-full" />}
         </button>

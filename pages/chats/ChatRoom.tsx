@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, Phone, Video, MoreVertical,
     Smile, Mic, Paperclip, Send, Image as ImageIcon,
-    Check, CheckCheck, Loader2
+    Check, CheckCheck, Loader2, ShieldAlert, CheckCircle
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
@@ -28,6 +28,7 @@ const ChatRoom: React.FC = () => {
     const [chatName, setChatName] = useState('Chat');
     const [chatAvatar, setChatAvatar] = useState('');
     const [loading, setLoading] = useState(true);
+    const [participantStatus, setParticipantStatus] = useState<'accepted' | 'pending' | 'rejected' | 'blocked'>('accepted');
     const listRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -48,6 +49,18 @@ const ChatRoom: React.FC = () => {
                     .single();
 
                 if (chatError) throw chatError;
+
+                // 1.5 Fetch MY status
+                const { data: myParticipant, error: myPartError } = await supabase
+                    .from('chat_participants')
+                    .select('status')
+                    .eq('chat_id', chatId)
+                    .eq('user_id', user.id)
+                    .single();
+
+                if (!myPartError && myParticipant) {
+                    setParticipantStatus(myParticipant.status);
+                }
 
                 if (chatData.is_group) {
                     setChatName(chatData.name);
@@ -164,6 +177,42 @@ const ChatRoom: React.FC = () => {
         }
     };
 
+    const handleAccept = async () => {
+        if (!user || !chatId) return;
+        try {
+            const { error } = await supabase
+                .from('chat_participants')
+                .update({ status: 'accepted' })
+                .eq('chat_id', chatId)
+                .eq('user_id', user.id);
+
+            if (error) throw error;
+            setParticipantStatus('accepted');
+        } catch (error) {
+            console.error("Error accepting chat:", error);
+            alert("Failed to accept.");
+        }
+    };
+
+    const handleBlock = async () => {
+        if (!user || !chatId) return;
+        if (!confirm("Are you sure you want to block this user?")) return;
+        try {
+            const { error } = await supabase
+                .from('chat_participants')
+                .update({ status: 'blocked' })
+                .eq('chat_id', chatId)
+                .eq('user_id', user.id);
+
+            if (error) throw error;
+            setParticipantStatus('blocked');
+            navigate('/chats'); // Go back to list
+        } catch (error) {
+            console.error("Error blocking chat:", error);
+            alert("Failed to block.");
+        }
+    };
+
     return (
         <div className="flex flex-col h-screen bg-[#e5ddd5]">
             {/* Header */}
@@ -239,46 +288,75 @@ const ChatRoom: React.FC = () => {
                     )))}
             </div>
 
-            {/* Input Area */}
-            <div className="p-3 bg-white flex items-end gap-2 safe-bottom">
-
-                <div className="flex-1 bg-gray-100 rounded-3xl flex items-center px-4 py-2 transition-all focus-within:ring-1 focus-within:ring-[#ff1744] focus-within:bg-white">
-                    <button className="p-1 mr-2 text-gray-400 hover:text-gray-600">
-                        <Smile size={24} />
-                    </button>
-                    <input
-                        type="text"
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Message"
-                        className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-500 max-h-32 py-1"
-                    />
-                    <button className="p-1 ml-2 text-gray-400 hover:text-gray-600 rotate-45">
-                        <Paperclip size={22} />
-                    </button>
-                    {!inputValue && (
-                        <button className="p-1 ml-2 text-gray-400 hover:text-gray-600">
-                            <ImageIcon size={22} />
+            {/* Conditional Input Area */}
+            {participantStatus === 'accepted' ? (
+                <div className="p-3 bg-white flex items-end gap-2 safe-bottom">
+                    <div className="flex-1 bg-gray-100 rounded-3xl flex items-center px-4 py-2 transition-all focus-within:ring-1 focus-within:ring-[#ff1744] focus-within:bg-white">
+                        <button className="p-1 mr-2 text-gray-400 hover:text-gray-600">
+                            <Smile size={24} />
                         </button>
-                    )}
-                </div>
+                        <input
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                            placeholder="Message"
+                            className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-500 max-h-32 py-1"
+                        />
+                        <button className="p-1 ml-2 text-gray-400 hover:text-gray-600 rotate-45">
+                            <Paperclip size={22} />
+                        </button>
+                        {!inputValue && (
+                            <button className="p-1 ml-2 text-gray-400 hover:text-gray-600">
+                                <ImageIcon size={22} />
+                            </button>
+                        )}
+                    </div>
 
-                <div className="h-12 w-12 flex-shrink-0">
-                    {inputValue ? (
+                    <div className="h-12 w-12 flex-shrink-0">
+                        {inputValue ? (
+                            <button
+                                onClick={handleSend}
+                                className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
+                            >
+                                <Send size={20} className="ml-1" />
+                            </button>
+                        ) : (
+                            <button className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95">
+                                <Mic size={22} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            ) : participantStatus === 'pending' ? (
+                <div className="p-4 bg-white border-t border-gray-200 safe-bottom">
+                    <div className="bg-gray-50 p-4 rounded-xl text-center mb-4">
+                        <ShieldAlert className="inline-block text-gray-400 mb-2" size={32} />
+                        <h4 className="font-bold text-gray-900 mb-1">Message Request</h4>
+                        <p className="text-sm text-gray-500">
+                            You don't follow this person. Do you want to accept their message invitation?
+                        </p>
+                    </div>
+                    <div className="flex gap-3">
                         <button
-                            onClick={handleSend}
-                            className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
+                            onClick={handleBlock}
+                            className="flex-1 py-3 text-red-500 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 active:scale-95 transition-all"
                         >
-                            <Send size={20} className="ml-1" />
+                            Block
                         </button>
-                    ) : (
-                        <button className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95">
-                            <Mic size={22} />
+                        <button
+                            onClick={handleAccept}
+                            className="flex-1 py-3 bg-[#ff1744] text-white font-bold rounded-xl shadow-md hover:bg-red-600 active:scale-95 transition-all"
+                        >
+                            Accept
                         </button>
-                    )}
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="p-6 bg-white border-t border-gray-200 text-center safe-bottom">
+                    <p className="text-gray-500 font-medium">You have blocked this user.</p>
+                </div>
+            )}
         </div>
     );
 };

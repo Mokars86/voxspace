@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const Welcome: React.FC = () => {
@@ -28,19 +28,19 @@ const Welcome: React.FC = () => {
             <div className="flex-1 flex flex-col items-center justify-center p-8 z-10 transition-all duration-1000">
                 <div
                     className={cn(
-                        "w-24 h-24 bg-gradient-to-tr from-[#ff1744] to-pink-500 rounded-3xl flex items-center justify-center shadow-xl mb-8 transform transition-all duration-1000",
+                        "w-24 h-24 bg-[#ff1744] rounded-full flex items-center justify-center shadow-xl mb-8 transform transition-all duration-1000",
                         animationStep >= 1 ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-10 scale-90"
                     )}
                 >
-                    <MessageCircle size={48} className="text-white fill-white" />
+                    <Zap size={48} className="text-white fill-white" />
                 </div>
 
                 <div className={cn(
                     "text-center space-y-2 transition-all duration-1000 delay-300",
                     animationStep >= 2 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
                 )}>
-                    <h1 className="text-4xl font-bold tracking-tight text-gray-900">
-                        VoxSpace
+                    <h1 className="text-4xl font-bold tracking-tight">
+                        <span className="text-black">Vox</span><span className="text-[#ff1744]">Space</span>
                     </h1>
                     <p className="text-xl text-gray-500 font-medium">
                         Voice of the People

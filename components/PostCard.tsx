@@ -128,24 +128,24 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
     };
 
     return (
-        <article className="p-4 border-b border-gray-50 bg-white hover:bg-gray-50/30 transition-colors">
+        <article className="p-4 border-b border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50/30 dark:hover:bg-gray-800/30 transition-colors">
             <div className="flex gap-3">
                 <div className="flex-shrink-0">
                     <img
                         src={post.author.avatar || `https://ui-avatars.com/api/?name=${post.author.name}&background=random`}
                         alt={post.author.name}
-                        className="w-10 h-10 rounded-full object-cover border border-gray-100"
+                        className="w-10 h-10 rounded-full object-cover border border-gray-100 dark:border-gray-700"
                     />
                 </div>
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between relative">
                         <div className="flex items-center gap-1 overflow-hidden">
-                            <span className="font-bold text-gray-900 truncate">{post.author.name}</span>
+                            <span className="font-bold text-gray-900 dark:text-white truncate">{post.author.name}</span>
                             {post.author.isVerified && <BadgeCheck size={16} className="text-[#ff1744] flex-shrink-0" />}
-                            <span className="text-gray-500 text-sm truncate">@{post.author.username}</span>
+                            <span className="text-gray-500 dark:text-gray-400 text-sm truncate">@{post.author.username}</span>
                             <span className="text-gray-400 text-sm mx-1">·</span>
-                            <span className="text-gray-500 text-sm flex-shrink-0">{post.timestamp}</span>
+                            <span className="text-gray-500 dark:text-gray-400 text-sm flex-shrink-0">{post.timestamp}</span>
                         </div>
 
                         {/* More Menu */}
@@ -153,21 +153,21 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                             <div className="relative">
                                 <button
                                     onClick={() => setMenuOpen(!menuOpen)}
-                                    className="text-gray-400 hover:text-gray-600 p-1 -mr-2 rounded-full hover:bg-gray-100"
+                                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 p-1 -mr-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
                                 >
                                     <MoreHorizontal size={18} />
                                 </button>
                                 {menuOpen && (
-                                    <div className="absolute right-0 top-6 w-32 bg-white shadow-lg rounded-xl border border-gray-100 p-1 z-10 animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="absolute right-0 top-6 w-32 bg-white dark:bg-gray-800 shadow-lg rounded-xl border border-gray-100 dark:border-gray-700 p-1 z-10 animate-in fade-in zoom-in-95 duration-200">
                                         <button
                                             onClick={() => { setIsEditing(true); setMenuOpen(false); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-left"
                                         >
                                             <Edit2 size={14} /> Edit
                                         </button>
                                         <button
                                             onClick={() => { handleDelete(); setMenuOpen(false); }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg text-left"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg text-left"
                                         >
                                             <Trash2 size={14} /> Delete
                                         </button>
@@ -183,7 +183,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                             <textarea
                                 value={editContent}
                                 onChange={(e) => setEditContent(e.target.value)}
-                                className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#ff1744] outline-none min-h-[100px]"
+                                className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-[#ff1744] outline-none min-h-[100px] dark:text-white"
                             />
                             <div className="flex justify-end gap-2 mt-2">
                                 <button
@@ -201,7 +201,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                             </div>
                         </div>
                     ) : (
-                        <p className="text-gray-900 mt-1 whitespace-pre-wrap leading-normal text-[15px]">
+                        <p className="text-gray-900 dark:text-gray-100 mt-1 whitespace-pre-wrap leading-normal text-[15px]">
                             {isEditing ? editContent : post.content}
                         </p>
                     )}
@@ -213,19 +213,19 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                     )}
 
                     {/* Action Bar */}
-                    <div className="flex items-center justify-between mt-3 text-gray-500 max-w-md">
+                    <div className="flex items-center justify-between mt-3 text-gray-500 dark:text-gray-400 max-w-md">
                         <button
                             onClick={fetchComments}
                             className={cn("flex items-center gap-2 group transition-colors text-sm", showComments ? "text-blue-500" : "hover:text-blue-500")}
                         >
-                            <div className="p-2 rounded-full group-hover:bg-blue-50 transition-colors">
+                            <div className="p-2 rounded-full group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 transition-colors">
                                 <MessageCircle size={18} className={cn(showComments && "fill-current")} />
                             </div>
                             <span>{commentCount}</span>
                         </button>
 
                         <button className="flex items-center gap-2 group hover:text-green-500 transition-colors text-sm">
-                            <div className="p-2 rounded-full group-hover:bg-green-50 transition-colors">
+                            <div className="p-2 rounded-full group-hover:bg-green-50 dark:group-hover:bg-green-900/30 transition-colors">
                                 <Repeat size={18} />
                             </div>
                             <span>{post.reposts}</span>
@@ -238,14 +238,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                                 liked ? "text-[#ff1744]" : "hover:text-[#ff1744]"
                             )}
                         >
-                            <div className="p-2 rounded-full group-hover:bg-red-50 transition-colors">
+                            <div className="p-2 rounded-full group-hover:bg-red-50 dark:group-hover:bg-red-900/30 transition-colors">
                                 <Heart size={18} className={cn(liked && "fill-current")} />
                             </div>
                             <span>{likeCount}</span>
                         </button>
 
                         <button className="flex items-center gap-2 group hover:text-blue-500 transition-colors text-sm">
-                            <div className="p-2 rounded-full group-hover:bg-blue-50 transition-colors">
+                            <div className="p-2 rounded-full group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 transition-colors">
                                 <Share size={18} />
                             </div>
                         </button>
@@ -253,10 +253,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
 
                     {/* Comments Section */}
                     {showComments && (
-                        <div className="mt-4 pt-4 border-t border-gray-50 animate-in slide-in-from-top-2">
+                        <div className="mt-4 pt-4 border-t border-gray-50 dark:border-gray-800 animate-in slide-in-from-top-2">
                             {/* Comment Input */}
                             <div className="flex gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 overflow-hidden">
+                                <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex-shrink-0 overflow-hidden">
                                     {user?.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />}
                                 </div>
                                 <div className="flex-1 relative">
@@ -265,13 +265,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                                         value={newComment}
                                         onChange={(e) => setNewComment(e.target.value)}
                                         placeholder="Post your reply"
-                                        className="w-full pl-4 pr-10 py-2 bg-gray-50 rounded-full text-sm outline-none focus:ring-1 focus:ring-[#ff1744] transition-all"
+                                        className="w-full pl-4 pr-10 py-2 bg-gray-50 dark:bg-gray-800 rounded-full text-sm outline-none focus:ring-1 focus:ring-[#ff1744] transition-all dark:text-white"
                                         onKeyDown={(e) => e.key === 'Enter' && handlePostComment()}
                                     />
                                     <button
                                         onClick={handlePostComment}
                                         disabled={!newComment.trim()}
-                                        className="absolute right-1 top-1 p-1.5 text-[#ff1744] hover:bg-red-50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="absolute right-1 top-1 p-1.5 text-[#ff1744] hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Send size={16} />
                                     </button>
@@ -284,12 +284,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                                     <div key={comment.id} className="flex gap-3 group">
                                         <img
                                             src={comment.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${comment.profiles?.full_name}`}
-                                            className="w-8 h-8 rounded-full object-cover border border-gray-100"
+                                            className="w-8 h-8 rounded-full object-cover border border-gray-100 dark:border-gray-700"
                                         />
                                         <div className="flex-1">
-                                            <div className="bg-gray-50 rounded-2xl p-3 px-4 relative">
+                                            <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-3 px-4 relative">
                                                 <div className="flex justify-between items-start">
-                                                    <span className="font-bold text-sm text-gray-900">{comment.profiles?.full_name}</span>
+                                                    <span className="font-bold text-sm text-gray-900 dark:text-gray-100">{comment.profiles?.full_name}</span>
                                                     {user && user.id === comment.user_id && (
                                                         <button
                                                             onClick={() => handleDeleteComment(comment.id)}
@@ -299,12 +299,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                                                         </button>
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-gray-700 mt-0.5">{comment.content}</p>
+                                                <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{comment.content}</p>
                                             </div>
                                             <div className="flex items-center gap-4 mt-1 ml-2">
                                                 <span className="text-xs text-gray-400">{new Date(comment.created_at).toLocaleDateString()}</span>
-                                                <button className="text-xs font-bold text-gray-500 hover:text-gray-900">Like</button>
-                                                <button className="text-xs font-bold text-gray-500 hover:text-gray-900">Reply</button>
+                                                <button className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">Like</button>
+                                                <button className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">Reply</button>
                                             </div>
                                         </div>
                                     </div>

@@ -1,76 +1,54 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Moon, Sun, Smartphone, Palette, Check } from 'lucide-react';
+import { ArrowLeft, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 const AppearanceSettings: React.FC = () => {
     const navigate = useNavigate();
-    const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
-    const [color, setColor] = useState('#ff1744');
+    const { theme, setTheme } = useTheme();
+    const [selectedTheme, setSelectedTheme] = React.useState(theme);
 
-    const colors = ['#ff1744', '#2962ff', '#00c853', '#aa00ff', '#ff6d00'];
+    const handleApply = () => {
+        setTheme(selectedTheme);
+        navigate(-1); // Optional: go back after applying, or stay. Staying is usually better for "Apply". Let's stay or give feedback? User didn't specify. Standard is just apply.
+    };
 
     return (
-        <div className="flex flex-col h-screen bg-white">
-            <header className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 sticky top-0 bg-white z-10">
-                <button onClick={() => navigate(-1)} className="text-gray-600 p-2 hover:bg-gray-100 rounded-full">
+        <div className="flex flex-col h-screen bg-white dark:bg-gray-900 dark:text-gray-100 transition-colors duration-300">
+            <header className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
+                <button onClick={() => navigate(-1)} className="text-gray-600 dark:text-gray-300 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
                     <ArrowLeft size={24} />
                 </button>
                 <h1 className="text-xl font-bold">Appearance</h1>
             </header>
 
-            <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-8">
-
+            <div className="flex-1 p-4 flex flex-col justify-between">
                 <section>
-                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 ml-2">Theme</h3>
-                    <div className="grid grid-cols-3 gap-4">
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 ml-2">Theme Mode</h3>
+                    <div className="grid grid-cols-2 gap-4">
                         <ThemeCard
                             icon={<Sun size={24} />}
-                            label="Light"
-                            selected={theme === 'light'}
-                            onClick={() => setTheme('light')}
+                            label="Light Mode"
+                            selected={selectedTheme === 'light'}
+                            onClick={() => setSelectedTheme('light')}
                         />
                         <ThemeCard
                             icon={<Moon size={24} />}
-                            label="Dark"
-                            selected={theme === 'dark'}
-                            onClick={() => setTheme('dark')}
-                        />
-                        <ThemeCard
-                            icon={<Smartphone size={24} />}
-                            label="System"
-                            selected={theme === 'system'}
-                            onClick={() => setTheme('system')}
+                            label="Dark Mode"
+                            selected={selectedTheme === 'dark'}
+                            onClick={() => setSelectedTheme('dark')}
                         />
                     </div>
                 </section>
 
-                <section>
-                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 ml-2">Accent Color</h3>
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between">
-                        {colors.map(c => (
-                            <button
-                                key={c}
-                                onClick={() => setColor(c)}
-                                style={{ backgroundColor: c }}
-                                className="w-10 h-10 rounded-full flex items-center justify-center transition-transform hover:scale-110 active:scale-95 shadow-sm"
-                            >
-                                {color === c && <Check className="text-white" size={16} />}
-                            </button>
-                        ))}
-                    </div>
-                </section>
-
-                <div className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-center">
-                    <h4 className="font-bold text-gray-900 mb-1" style={{ color: color }}>Preview</h4>
-                    <p className="text-xs text-gray-500">This is how your accent color looks.</p>
+                <div className="pt-4">
                     <button
-                        className="mt-3 px-6 py-2 rounded-full text-white font-bold text-sm shadow-md"
-                        style={{ backgroundColor: color }}
+                        onClick={handleApply}
+                        className="w-full py-4 bg-[#ff1744] text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-transform"
                     >
-                        Button
+                        Apply Theme
                     </button>
                 </div>
-
             </div>
         </div>
     );
@@ -80,8 +58,8 @@ const ThemeCard = ({ icon, label, selected, onClick }: any) => (
     <button
         onClick={onClick}
         className={`flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all ${selected
-                ? 'border-[#ff1744] bg-red-50 text-[#ff1744]'
-                : 'border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200'
+            ? 'border-[#ff1744] bg-red-50 dark:bg-red-900/20 text-[#ff1744]'
+            : 'border-transparent bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
     >
         {icon}

@@ -12,7 +12,7 @@ const ChatView: React.FC = () => {
   const [filter, setFilter] = useState('');
   const [chats, setChats] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'archived'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'archived'>('all');
 
   const fetchChats = async () => {
     if (!user) return;
@@ -21,7 +21,7 @@ const ChatView: React.FC = () => {
       // 1. Get all chats where the current user is a participant
       const { data: myChats, error: myChatsError } = await supabase
         .from('chat_participants')
-        .select('chat_id, is_archived, chats(id, name, is_group)')
+        .select('chat_id, is_archived, status, chats(id, name, is_group)')
         .eq('user_id', user.id);
 
       if (myChatsError) throw myChatsError;
@@ -83,7 +83,8 @@ const ChatView: React.FC = () => {
           avatar: avatar,
           isOnline: isOnline,
           isArchived: myChat.is_archived,
-          isGroup: chatInfo?.is_group ?? false
+          isGroup: chatInfo?.is_group ?? false,
+          status: myChat.status || 'accepted'
         };
       });
 
@@ -173,27 +174,48 @@ const ChatView: React.FC = () => {
 
   const filteredChats = chats.filter(chat => {
     const matchesFilter = chat.name.toLowerCase().includes(filter.toLowerCase());
-    const matchesTab = activeTab === 'archived' ? chat.isArchived : !chat.isArchived;
+
+    // Status Logic
+    // If 'requests' -> status must be 'pending'
+    // If 'archived' -> isArchived true
+    // If 'all' -> status 'accepted' AND isArchived false
+
+    let matchesTab = false;
+    if (activeTab === 'requests') {
+      matchesTab = chat.status === 'pending';
+    } else if (activeTab === 'archived') {
+      matchesTab = !!chat.isArchived;
+    } else {
+      // 'all' shows active, accepted chats
+      matchesTab = !chat.isArchived && chat.status !== 'pending' && chat.status !== 'blocked' && chat.status !== 'rejected';
+    }
+
     return matchesFilter && matchesTab;
   });
 
   return (
-    <div className="flex flex-col h-full bg-white relative">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors relative">
       {/* Header / Search */}
-      <div className="p-4 bg-white sticky top-0 z-10 space-y-3">
+      <div className="p-4 bg-white dark:bg-gray-900 sticky top-0 z-10 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold tracking-tight">Chats</h2>
+          <h2 className="text-2xl font-bold tracking-tight dark:text-white">Chats</h2>
 
-          <div className="flex bg-gray-100 p-1 rounded-full">
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-full text-sm">
             <button
               onClick={() => setActiveTab('all')}
-              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'all' ? "bg-white text-black shadow-sm" : "text-gray-500")}
+              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'all' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
             >
               All
             </button>
             <button
+              onClick={() => setActiveTab('requests')}
+              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'requests' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
+            >
+              Requests
+            </button>
+            <button
               onClick={() => setActiveTab('archived')}
-              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'archived' ? "bg-white text-black shadow-sm" : "text-gray-500")}
+              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'archived' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
             >
               Archived
             </button>
@@ -207,12 +229,11 @@ const ChatView: React.FC = () => {
             placeholder="Search chats..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border-none focus:ring-1 focus:ring-[#ff1744] outline-none text-sm font-medium transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 rounded-xl border-none focus:ring-1 focus:ring-[#ff1744] outline-none text-sm font-medium transition-all text-gray-900 dark:text-white dark:placeholder:text-gray-500"
           />
         </div>
       </div>
 
-      {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex py-12 justify-center">
@@ -223,10 +244,10 @@ const ChatView: React.FC = () => {
             <div
               key={chat.id}
               onClick={() => navigate(`/chat/${chat.id}`)}
-              className="group relative flex items-center p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer border-b border-gray-50"
+              className="group relative flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100 dark:active:bg-gray-700 transition-colors cursor-pointer border-b border-gray-50 dark:border-gray-800"
             >
               <div className="relative mr-4">
-                <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center text-lg font-bold text-gray-500 overflow-hidden">
+                <div className="w-14 h-14 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-lg font-bold text-gray-500 dark:text-gray-300 overflow-hidden">
                   {chat.avatar ? (
                     <img src={chat.avatar} alt={chat.name} className="w-full h-full object-cover" />
                   ) : (
@@ -234,34 +255,34 @@ const ChatView: React.FC = () => {
                   )}
                 </div>
                 {chat.isOnline && (
-                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white"></div>
+                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-baseline mb-1">
-                  <h3 className="font-semibold text-gray-900 truncate pr-2">{chat.name}</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate pr-2">{chat.name}</h3>
                   <span className={cn("text-xs whitespace-nowrap", chat.unread > 0 ? "text-[#ff1744] font-bold" : "text-gray-400")}>
                     {chat.time}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <p className={cn("text-sm truncate pr-2", chat.unread > 0 ? "text-gray-900 font-medium" : "text-gray-500")}>
-                    {chat.lastMessage}
+                  <p className={cn("text-sm truncate pr-2", chat.unread > 0 ? "text-gray-900 dark:text-white font-medium" : "text-gray-500 dark:text-gray-400")}>
+                    {chat.status === 'pending' ? 'Message Request' : chat.lastMessage}
                   </p>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 bottom-4 bg-white/80 p-1 rounded-lg backdrop-blur-sm">
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 bottom-4 bg-white/80 dark:bg-gray-900/80 p-1 rounded-lg backdrop-blur-sm">
                     <button
                       onClick={(e) => handleArchive(e, chat.id, chat.isArchived || false)}
-                      className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-full"
+                      className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/30 rounded-full"
                       title={chat.isArchived ? "Unarchive" : "Archive"}
                     >
                       <Archive size={16} />
                     </button>
                     <button
                       onClick={(e) => handleDelete(e, chat.id)}
-                      className="p-1 px-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-full"
+                      className="p-1 px-2 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full"
                     >
                       Delete
                     </button>
@@ -282,7 +303,11 @@ const ChatView: React.FC = () => {
           ))
         ) : (
           <div className="p-8 text-center text-gray-400">
-            <p>{activeTab === 'all' ? "No active chats." : "No archived chats."}</p>
+            <p>
+              {activeTab === 'all' ? "No active chats." :
+                activeTab === 'requests' ? "No message requests." :
+                  "No archived chats."}
+            </p>
           </div>
         )}
       </div>

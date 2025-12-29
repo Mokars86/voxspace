@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VoxSpace</string>
+    <string name="title_activity_main">VoxSpace</string>
+    <string name="package_name">com.voxspace.app</string>
+    <string name="custom_url_scheme">com.voxspace.app</string>
+</resources>

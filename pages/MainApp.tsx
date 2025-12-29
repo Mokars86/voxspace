@@ -8,7 +8,8 @@ import {
     Plus,
     Wallet,
     Bell,
-    X
+    X,
+    Zap
 } from 'lucide-react';
 import { TabType } from '../types';
 import FeedView from '../components/FeedView';
@@ -37,20 +38,27 @@ const MainApp: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-screen max-w-md mx-auto bg-white shadow-xl relative overflow-hidden border-x border-gray-100">
+        <div className="flex flex-col h-screen max-w-md mx-auto bg-white dark:bg-gray-900 shadow-xl relative overflow-hidden border-x border-gray-100 dark:border-gray-800">
             {/* Header */}
-            <header className="px-4 py-3 flex items-center justify-between border-b border-gray-100 bg-white sticky top-0 z-10 w-full">
-                <h1 className="text-2xl font-bold text-[#ff1744] tracking-tighter">VoxSpace</h1>
+            <header className="px-4 py-3 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 sticky top-0 z-10 w-full">
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-[#ff1744] rounded-full flex items-center justify-center shadow-sm">
+                        <Zap size={16} className="text-white fill-white" />
+                    </div>
+                    <h1 className="text-2xl font-bold tracking-tighter">
+                        <span className="text-black dark:text-white">Vox</span><span className="text-[#ff1744]">Space</span>
+                    </h1>
+                </div>
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={() => setActiveTab('wallet')}
-                        className={`p-1.5 rounded-full transition-colors ${activeTab === 'wallet' ? 'bg-red-50 text-[#ff1744]' : 'text-gray-600'}`}
+                        className={`p-1.5 rounded-full transition-colors ${activeTab === 'wallet' ? 'bg-red-50 dark:bg-red-900/20 text-[#ff1744]' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         <Wallet size={22} />
                     </button>
                     <button
                         onClick={() => setShowNotifications(true)}
-                        className="p-1.5 rounded-full text-gray-600 relative"
+                        className="p-1.5 rounded-full text-gray-600 dark:text-gray-400 relative"
                     >
                         <Bell size={22} />
                         <span className="absolute top-1 right-1 w-2 h-2 bg-[#ff1744] rounded-full"></span>
@@ -59,7 +67,7 @@ const MainApp: React.FC = () => {
             </header>
 
             {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto bg-white w-full">
+            <main className="flex-1 overflow-y-auto bg-white dark:bg-gray-900 w-full">
                 {renderContent()}
             </main>
 
@@ -72,7 +80,7 @@ const MainApp: React.FC = () => {
             </button>
 
             {/* Navigation */}
-            <nav className="flex items-center justify-around py-3 border-t border-gray-100 bg-white/90 backdrop-blur-md safe-bottom sticky bottom-0 z-10 w-full">
+            <nav className="flex items-center justify-around py-3 border-t border-gray-100 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md safe-bottom sticky bottom-0 z-10 w-full">
                 <NavButton active={activeTab === 'chats'} onClick={() => setActiveTab('chats')} icon={<MessageCircle size={24} />} label="Chats" />
                 <NavButton active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} icon={<Rss size={24} />} label="Feed" />
                 <NavButton active={activeTab === 'spaces'} onClick={() => setActiveTab('spaces')} icon={<Users size={24} />} label="Spaces" />

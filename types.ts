@@ -29,6 +29,7 @@ export interface ChatPreview {
   isTyping?: boolean;
   isArchived?: boolean;
   isGroup?: boolean;
+  status?: 'accepted' | 'pending' | 'rejected' | 'blocked';
 }
 
 export interface Space {
@@ -39,4 +40,19 @@ export interface Space {
   isLive: boolean;
   banner: string;
   speakers?: string[];
+}
+
+export interface Story {
+  id: string;
+  user_id: string;
+  user?: {
+    username: string;
+    avatar_url: string;
+  };
+  media_url?: string;
+  content?: string;
+  type: 'image' | 'text' | 'video';
+  created_at: string;
+  expires_at: string;
+  is_viewed?: boolean;
 }

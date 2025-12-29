@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, MessageSquare, Mic, Globe, Share2, MoreVertical, Loader2, Camera } from 'lucide-react';
+import { ArrowLeft, Users, MessageSquare, Mic, Globe, Share2, MoreVertical, Loader2, Camera, Trash2 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -18,6 +18,30 @@ const SpaceDetail: React.FC = () => {
 
     const [isMember, setIsMember] = useState(false);
     const [joinLoading, setJoinLoading] = useState(false);
+
+    // Handlers
+    const handleShare = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            alert("Space link copied to clipboard!");
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!space || !user) return;
+        if (!window.confirm("Are you sure you want to delete this space? This cannot be undone.")) return;
+
+        try {
+            const { error } = await supabase.from('spaces').delete().eq('id', space.id);
+            if (error) throw error;
+            navigate('/spaces');
+        } catch (error: any) {
+            console.error("Error deleting space:", error);
+            alert("Failed to delete space: " + error.message);
+        }
+    };
 
     useEffect(() => {
         const fetchSpace = async () => {
@@ -139,12 +163,14 @@ const SpaceDetail: React.FC = () => {
                         <ArrowLeft size={24} />
                     </button>
                     <div className="flex gap-2">
-                        <button className="p-2 bg-black/20 backdrop-blur-md rounded-full hover:bg-black/40">
+                        <button onClick={handleShare} className="p-2 bg-black/20 backdrop-blur-md rounded-full hover:bg-black/40">
                             <Share2 size={24} />
                         </button>
-                        <button className="p-2 bg-black/20 backdrop-blur-md rounded-full hover:bg-black/40">
-                            <MoreVertical size={24} />
-                        </button>
+                        {isOwner && (
+                            <button onClick={handleDelete} className="p-2 bg-red-500/80 backdrop-blur-md rounded-full hover:bg-red-600">
+                                <Trash2 size={24} />
+                            </button>
+                        )}
                     </div>
                 </div>
 
