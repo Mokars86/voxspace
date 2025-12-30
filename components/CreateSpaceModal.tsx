@@ -14,23 +14,44 @@ const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({ onClose, onSuccess 
     const [description, setDescription] = useState('');
     const [isPrivate, setIsPrivate] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [bannerFile, setBannerFile] = useState<File | null>(null);
 
     const handleCreate = async () => {
         if (!name.trim() || !user) return;
         setLoading(true);
 
         try {
-            const { error } = await supabase.from('spaces').insert({
+            const { data, error } = await supabase.from('spaces').insert({
                 name,
                 description,
                 owner_id: user.id,
                 // Randomly assign a nice banner
-                banner_url: `https://source.unsplash.com/random/800x600/?abstract,${name}`,
+                banner_url: null, // Will update below
                 is_live: false,
                 members_count: 1
-            });
+            })
+                .select()
+                .single();
 
             if (error) throw error;
+            const newSpace = data;
+
+            // Upload Banner if selected
+            let finalBannerUrl = `https://source.unsplash.com/random/800x600/?abstract,${name}`; // Default
+
+            if (bannerFile) {
+                const fileExt = bannerFile.name.split('.').pop();
+                const fileName = `space-banner-${newSpace.id}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage.from('VoxSpace_App').upload(fileName, bannerFile);
+
+                if (!uploadError) {
+                    const { data: urlData } = supabase.storage.from('VoxSpace_App').getPublicUrl(fileName);
+                    finalBannerUrl = urlData.publicUrl;
+                }
+            }
+
+            // Update with initial or uploaded banner
+            await supabase.from('spaces').update({ banner_url: finalBannerUrl }).eq('id', newSpace.id);
             onSuccess();
             onClose();
         } catch (error: any) {
@@ -62,6 +83,29 @@ const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({ onClose, onSuccess 
                             className="w-full p-3 bg-gray-50 rounded-xl border-none focus:ring-1 focus:ring-[#ff1744] font-medium"
                             autoFocus
                         />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700">Space Banner/Avatar</label>
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center border">
+                                {bannerFile ? (
+                                    <img src={URL.createObjectURL(bannerFile)} className="w-full h-full object-cover" />
+                                ) : (
+                                    <Globe className="text-gray-300" />
+                                )}
+                            </div>
+                            <label className="px-4 py-2 bg-gray-100 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-200">
+                                Upload Image
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                        if (e.target.files?.[0]) setBannerFile(e.target.files[0]);
+                                    }}
+                                />
+                            </label>
+                        </div>
                     </div>
 
                     <div className="space-y-2">

@@ -16,6 +16,40 @@ export interface Post {
   reposts: number;
   media?: string;
   isLiked?: boolean;
+  repostOf?: Post; // For quotes/reposts
+  repostAuthor?: string;
+  space_id?: string;
+  is_pinned?: boolean;
+}
+
+export interface SpaceEvent {
+  id: string;
+  space_id: string;
+  title: string;
+  description: string;
+  start_time: string;
+  location: string;
+  created_by: string;
+}
+
+// Consolidated Story Interface
+export interface Story {
+  id: string;
+  user_id: string;
+  user?: {
+    username: string;
+    avatar_url: string;
+  };
+  media_url?: string;
+  content?: string;
+  type: 'image' | 'text' | 'video' | 'voice' | 'poll';
+  created_at: string;
+  expires_at: string;
+  is_viewed?: boolean;
+  privacy_level?: 'public' | 'followers' | 'only_me';
+  views_count?: number;
+  poll_options?: { text: string; count: number }[];
+  user_vote?: number; // Index of option user voted for
 }
 
 export interface ChatPreview {
@@ -30,6 +64,7 @@ export interface ChatPreview {
   isArchived?: boolean;
   isGroup?: boolean;
   status?: 'accepted' | 'pending' | 'rejected' | 'blocked';
+  isPinned?: boolean;
 }
 
 export interface Space {
@@ -51,8 +86,12 @@ export interface Story {
   };
   media_url?: string;
   content?: string;
-  type: 'image' | 'text' | 'video';
+  type: 'image' | 'text' | 'video' | 'voice' | 'poll';
   created_at: string;
   expires_at: string;
   is_viewed?: boolean;
+  privacy_level?: 'public' | 'followers' | 'only_me';
+  views_count?: number;
+  poll_options?: { text: string; count: number }[];
+  user_vote?: number; // Index of option user voted for
 }

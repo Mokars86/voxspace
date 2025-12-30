@@ -1,39 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-    ArrowLeft, Phone, Video, MoreVertical,
-    Smile, Mic, Paperclip, Send, Image as ImageIcon,
-    Check, CheckCheck, Loader2, ShieldAlert, CheckCircle
+    ArrowLeft, Phone, Video, MoreVertical, Loader2, ShieldAlert,
+    Info, Users, Image as ImageIcon, VolumeX, LogOut, CheckCircle2
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
+import MessageBubble, { ChatMessage } from '../../components/chat/MessageBubble';
+import ChatInput from '../../components/chat/ChatInput';
 
-interface Message {
-    id: string;
-    text: string;
-    sender: 'me' | 'them';
-    time: string;
-    type: 'text' | 'image' | 'voice' | 'video';
-    status: 'sent' | 'delivered' | 'read';
-    mediaUrl?: string;
-}
+interface Message extends ChatMessage { }
 
 const ChatRoom: React.FC = () => {
     const { id: chatId } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
-    const [inputValue, setInputValue] = useState('');
     const [chatName, setChatName] = useState('Chat');
     const [chatAvatar, setChatAvatar] = useState('');
     const [loading, setLoading] = useState(true);
     const [participantStatus, setParticipantStatus] = useState<'accepted' | 'pending' | 'rejected' | 'blocked'>('accepted');
+    const [replyTo, setReplyTo] = useState<any>(null);
+    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     const listRef = useRef<HTMLDivElement>(null);
+    const channelRef = useRef<any>(null);
+    const [isBuzzing, setIsBuzzing] = useState(false);
+    const typingTimeoutRef = useRef<any>(null);
 
     useEffect(() => {
         listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-    }, [messages]);
+    }, [messages.length]);
 
     useEffect(() => {
         if (!user || !chatId) return;
@@ -41,7 +38,7 @@ const ChatRoom: React.FC = () => {
         const fetchChatDetails = async () => {
             setLoading(true);
             try {
-                // 1. Fetch Chat Info & Participants to determine name
+                // Fetch Chat Info
                 const { data: chatData, error: chatError } = await supabase
                     .from('chats')
                     .select('name, is_group')
@@ -50,22 +47,20 @@ const ChatRoom: React.FC = () => {
 
                 if (chatError) throw chatError;
 
-                // 1.5 Fetch MY status
-                const { data: myParticipant, error: myPartError } = await supabase
+                // Fetch MY status
+                const { data: myParticipant } = await supabase
                     .from('chat_participants')
                     .select('status')
                     .eq('chat_id', chatId)
                     .eq('user_id', user.id)
                     .single();
 
-                if (!myPartError && myParticipant) {
-                    setParticipantStatus(myParticipant.status);
-                }
+                if (myParticipant) setParticipantStatus(myParticipant.status);
 
                 if (chatData.is_group) {
                     setChatName(chatData.name);
+                    // Group logic simplified/removed for now
                 } else {
-                    // Fetch other participant
                     const { data: participants } = await supabase
                         .from('chat_participants')
                         .select('profiles(full_name, avatar_url)')
@@ -73,44 +68,45 @@ const ChatRoom: React.FC = () => {
                         .neq('user_id', user.id)
                         .single();
 
-                    if (participants && participants.profiles) {
-                        const profile: any = Array.isArray(participants.profiles)
-                            ? participants.profiles[0]
-                            : participants.profiles;
-
-                        if (profile) {
-                            setChatName(profile.full_name);
-                            setChatAvatar(profile.avatar_url);
-                        }
+                    if (participants?.profiles) {
+                        const profile: any = Array.isArray(participants.profiles) ? participants.profiles[0] : participants.profiles;
+                        setChatName(profile.full_name);
+                        setChatAvatar(profile.avatar_url);
                     }
                 }
 
-                // 2. Fetch Messages
                 await fetchMessages();
 
-                // 3. Subscribe to new messages
+                // Subscribe to real-time updates for messages and presence
                 const channel = supabase
                     .channel(`chat:${chatId}`)
                     .on('postgres_changes',
                         { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
-                        (payload) => {
-                            const newMsgRaw = payload.new;
-                            // Only add if not from me (optimistic update handles me) or if I want to confirm receipt
-                            if (newMsgRaw.sender_id !== user.id) {
-                                const incomingMsg: Message = {
-                                    id: newMsgRaw.id,
-                                    text: newMsgRaw.content,
-                                    sender: 'them',
-                                    time: new Date(newMsgRaw.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                                    type: newMsgRaw.type || 'text',
-                                    status: 'read', // auto-read for now
-                                    mediaUrl: newMsgRaw.media_url
-                                };
-                                setMessages(prev => [...prev, incomingMsg]);
-                            }
-                        }
+                        (payload) => handleNewMessage(payload.new)
                     )
-                    .subscribe();
+                    .on('presence', { event: 'sync' }, () => {
+                        const state = channel.presenceState();
+                        const typing = new Set<string>();
+                        Object.values(state).forEach((presences: any) => {
+                            presences.forEach((p: any) => {
+                                if (p.typing && p.user_id !== user.id) {
+                                    typing.add(p.full_name || 'Someone');
+                                }
+                            });
+                        });
+                        setTypingUsers(typing);
+                    })
+                    .subscribe(async (status) => {
+                        if (status === 'SUBSCRIBED') {
+                            await channel.track({
+                                user_id: user.id,
+                                full_name: user.user_metadata?.full_name || 'User',
+                                typing: false
+                            });
+                        }
+                    });
+
+                channelRef.current = channel;
 
                 return () => {
                     supabase.removeChannel(channel);
@@ -126,237 +122,273 @@ const ChatRoom: React.FC = () => {
         fetchChatDetails();
     }, [user, chatId]);
 
+    const handleNewMessage = (newMsgRaw: any) => {
+        if (newMsgRaw.sender_id === user?.id) return; // handled locally
+
+        const incomingMsg: Message = {
+            id: newMsgRaw.id,
+            text: newMsgRaw.content,
+            sender: 'them',
+            time: new Date(newMsgRaw.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: newMsgRaw.type || 'text',
+            status: 'read',
+            mediaUrl: newMsgRaw.media_url,
+            metadata: newMsgRaw.metadata,
+            replyTo: newMsgRaw.reply_to_id ? getLastMessage(newMsgRaw.reply_to_id) : undefined
+        };
+        if (newMsgRaw.type === 'buzz') {
+            triggerBuzz();
+        }
+        setMessages(prev => [...prev, incomingMsg]);
+    };
+
+    const triggerBuzz = () => {
+        setIsBuzzing(true);
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+        setTimeout(() => setIsBuzzing(false), 1000);
+    };
+
+    // Helper to find reply context locally (simplified)
+    const getLastMessage = (id: string) => {
+        // In real app, might need to fetch if not in current list
+        return undefined; // Placeholder
+    };
+
     const fetchMessages = async () => {
         if (!chatId || !user) return;
+
+        // Join with reactions if possible or fetch separately. 
+        // For simplicity, fetching messages raw.
         const { data, error } = await supabase
             .from('messages')
-            .select('*')
+            .select(`
+                *,
+                message_reactions(reaction, user_id)
+            `)
             .eq('chat_id', chatId)
             .order('created_at', { ascending: true });
 
         if (!error && data) {
-            const formatted: Message[] = data.map((m: any) => ({
-                id: m.id,
-                text: m.content,
-                sender: m.sender_id === user.id ? 'me' : 'them',
-                time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                type: m.type || 'text',
-                status: 'read',
-                mediaUrl: m.media_url
-            }));
+            const formatted: Message[] = data.map((m: any) => {
+                // Process Reactions
+                const reactions: { [key: string]: number } = {};
+                m.message_reactions?.forEach((r: any) => {
+                    reactions[r.reaction] = (reactions[r.reaction] || 0) + 1;
+                });
+
+                return {
+                    id: m.id,
+                    text: m.content,
+                    sender: m.sender_id === user.id ? 'me' : 'them',
+                    time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    type: m.type || 'text',
+                    status: 'read',
+                    mediaUrl: m.media_url,
+                    metadata: m.metadata,
+                    reactions: reactions,
+                    isDeleted: m.is_deleted
+                };
+            });
             setMessages(formatted);
         }
     };
 
-    const handleSend = async () => {
-        if (!inputValue.trim() || !user || !chatId) return;
+    const handleSend = async (content: string, type: 'text' | 'image' | 'video' | 'voice' | 'buzz', file?: File, duration?: number, extras?: any) => {
+        if (!user || !chatId) return;
+
+        let mediaUrl = '';
+
+        // 1. Upload File if present
+        if (file) {
+            const ext = file.name.split('.').pop();
+            const fileName = `${Date.now()}.${ext}`;
+            const filePath = `${chatId}/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('chat-attachments')
+                .upload(filePath, file);
+
+            if (uploadError) {
+                console.error("Upload failed", uploadError);
+                return;
+            }
+
+            const { data } = supabase.storage.from('chat-attachments').getPublicUrl(filePath);
+            mediaUrl = data.publicUrl;
+        }
 
         const optimisticMsg: Message = {
             id: Date.now().toString(),
-            text: inputValue,
+            text: content,
             sender: 'me',
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: 'text',
-            status: 'sent'
+            type: type,
+            status: 'sent',
+            mediaUrl: mediaUrl,
+            metadata: { duration },
+            replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, sender: replyTo.sender } : undefined
         };
+
         setMessages([...messages, optimisticMsg]);
-        setInputValue('');
+        setReplyTo(null); // Clear reply context
 
         try {
             const { error } = await supabase.from('messages').insert({
                 chat_id: chatId,
                 sender_id: user.id,
-                content: optimisticMsg.text,
-                type: 'text'
+                content: content,
+                type: type,
+                media_url: mediaUrl,
+                metadata: { duration },
+                reply_to_id: replyTo?.id
             });
 
             if (error) throw error;
+
+            // Allow immediate re-typing trigger if needed, but typically sending stops typing
+            if (channelRef.current) {
+                await channelRef.current.track({ user_id: user.id, full_name: user.user_metadata?.full_name, typing: false });
+            }
+
         } catch (error) {
             console.error("Failed to send message", error);
-            // Optionally show error state on message
         }
     };
 
-    const handleAccept = async () => {
-        if (!user || !chatId) return;
+    const handleReaction = async (msgId: string, reaction: string) => {
+        // Optimistic UI update could go here
         try {
-            const { error } = await supabase
-                .from('chat_participants')
-                .update({ status: 'accepted' })
-                .eq('chat_id', chatId)
-                .eq('user_id', user.id);
-
+            const { error } = await supabase.rpc('toggle_reaction', {
+                p_message_id: msgId,
+                p_reaction: reaction
+            });
             if (error) throw error;
-            setParticipantStatus('accepted');
-        } catch (error) {
-            console.error("Error accepting chat:", error);
-            alert("Failed to accept.");
+            // Refetch or wait for realtime subscription to update reactions (needs detailed subscription)
+        } catch (e) {
+            console.error("Reaction failed", e);
         }
     };
 
-    const handleBlock = async () => {
-        if (!user || !chatId) return;
-        if (!confirm("Are you sure you want to block this user?")) return;
-        try {
-            const { error } = await supabase
-                .from('chat_participants')
-                .update({ status: 'blocked' })
-                .eq('chat_id', chatId)
-                .eq('user_id', user.id);
+    const handleTyping = async () => {
+        if (!channelRef.current || !user) return;
 
-            if (error) throw error;
-            setParticipantStatus('blocked');
-            navigate('/chats'); // Go back to list
-        } catch (error) {
-            console.error("Error blocking chat:", error);
-            alert("Failed to block.");
+        // If no timer is running, it means we weren't previously marked as typing.
+        // So we send the "true" status now.
+        if (!typingTimeoutRef.current) {
+            await channelRef.current.track({
+                user_id: user.id,
+                full_name: user.user_metadata?.full_name || 'User',
+                typing: true
+            });
         }
+
+        // Clear any existing timer to restart the countdown
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        // Set a new timer to mark as "not typing" after 3 seconds of inactivity
+        typingTimeoutRef.current = setTimeout(async () => {
+            if (channelRef.current) {
+                await channelRef.current.track({
+                    user_id: user.id,
+                    full_name: user.user_metadata?.full_name || 'User',
+                    typing: false
+                });
+                typingTimeoutRef.current = null;
+            }
+        }, 3000);
     };
 
     return (
-        <div className="flex flex-col h-screen bg-[#e5ddd5]">
-            {/* Header */}
-            <header className="px-4 py-3 bg-white flex items-center justify-between shadow-sm z-10">
-                <div className="flex items-center gap-3">
-                    <button onClick={() => navigate(-1)} className="text-gray-600">
-                        <ArrowLeft size={24} />
-                    </button>
+        <div className={cn("flex flex-col h-[100dvh] bg-[#e5ddd5] transition-transform fixed inset-0 overflow-hidden", isBuzzing && "animate-[spin_0.5s_ease-in-out]")}>
+            <style>{`
+                @keyframes shake {
+                    0% { transform: translate(1px, 1px) rotate(0deg); }
+                    10% { transform: translate(-1px, -2px) rotate(-1deg); }
+                    20% { transform: translate(-3px, 0px) rotate(1deg); }
+                    30% { transform: translate(3px, 2px) rotate(0deg); }
+                    40% { transform: translate(1px, -1px) rotate(1deg); }
+                    50% { transform: translate(-1px, 2px) rotate(-1deg); }
+                    60% { transform: translate(-3px, 1px) rotate(0deg); }
+                    70% { transform: translate(3px, 1px) rotate(-1deg); }
+                    80% { transform: translate(-1px, -1px) rotate(1deg); }
+                    90% { transform: translate(1px, 2px) rotate(0deg); }
+                    100% { transform: translate(1px, -2px) rotate(-1deg); }
+                }
+            `}</style>
+            <div className={cn("flex flex-col h-full", isBuzzing && "animate-[shake_0.5s_ease-in-out_infinite]")}>
+                {/* Header */}
+                <header className="px-4 py-3 bg-white flex items-center justify-between shadow-sm z-10">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 overflow-hidden">
-                            {chatAvatar ? <img src={chatAvatar} className="w-full h-full object-cover" alt="avatar" /> : chatName[0]}
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-gray-900 leading-tight">{chatName}</h3>
-                            <p className="text-xs text-green-500 font-medium">Online</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-4 text-[#ff1744]">
-                    <Video size={24} />
-                    <Phone size={22} />
-                    <MoreVertical size={24} className="text-gray-500" />
-                </div>
-            </header>
-
-            {/* Messages Area */}
-            <div
-                ref={listRef}
-                className="flex-1 overflow-y-auto p-4 space-y-4 bg-[url('https://i.pinimg.com/originals/8c/98/99/8c98994518b575bfd8c949e91d20548b.png')] bg-repeat opacity-95"
-            >
-                {loading ? (
-                    <div className="flex justify-center pt-10"><Loader2 className="animate-spin text-gray-500" /></div>
-                ) : (
-                    messages.map((msg) => (
-                        <div
-                            key={msg.id}
-                            className={cn(
-                                "flex w-full mb-2",
-                                msg.sender === 'me' ? "justify-end" : "justify-start"
-                            )}
-                        >
-                            <div className={cn(
-                                "max-w-[75%] rounded-2xl px-4 py-2 relative shadow-sm",
-                                msg.sender === 'me'
-                                    ? "bg-[#ff1744] text-white rounded-tr-none"
-                                    : "bg-white text-gray-900 rounded-tl-none"
-                            )}>
-                                {msg.type === 'text' && (
-                                    <p className="text-[15px] leading-relaxed">{msg.text}</p>
-                                )}
-
-                                {msg.type === 'image' && msg.mediaUrl && (
-                                    <div className="mb-1 overflow-hidden rounded-lg">
-                                        <img src={msg.mediaUrl} alt="Shared" className="w-full h-auto" />
-                                    </div>
-                                )}
-
-                                <div className={cn(
-                                    "flex items-center justify-end gap-1 mt-1 text-[10px]",
-                                    msg.sender === 'me' ? "text-white/80" : "text-gray-400"
-                                )}>
-                                    <span>{msg.time}</span>
-                                    {msg.sender === 'me' && (
-                                        <>
-                                            {msg.status === 'sent' && <Check size={12} />}
-                                            {msg.status === 'delivered' && <CheckCheck size={12} />}
-                                            {msg.status === 'read' && <CheckCheck size={12} className="text-blue-200" />}
-                                        </>
-                                    )}
-                                </div>
+                        <button onClick={() => navigate(-1)} className="text-gray-600">
+                            <ArrowLeft size={24} />
+                        </button>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 overflow-hidden">
+                                {chatAvatar ? <img src={chatAvatar} className="w-full h-full object-cover" alt="avatar" /> : chatName[0]}
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 leading-tight">{chatName}</h3>
+                                <p className="text-xs text-green-500 font-medium">Online</p>
                             </div>
                         </div>
-                    )))}
+                    </div>
+                    <div className="flex items-center gap-4 text-[#ff1744]">
+                        <Video size={24} />
+                        <Phone size={22} />
+                        <button className="p-1 rounded-full hover:bg-gray-100"><MoreVertical size={24} className="text-gray-500" /></button>
+                    </div>
+                </header>
+
+                {/* Messages Area */}
+                <div
+                    ref={listRef}
+                    className="flex-1 overflow-y-auto p-4 bg-[url('https://i.pinimg.com/originals/8c/98/99/8c98994518b575bfd8c949e91d20548b.png')] bg-repeat opacity-95"
+                >
+                    {loading ? (
+                        <div className="flex justify-center pt-10"><Loader2 className="animate-spin text-gray-500" /></div>
+                    ) : (
+                        <>
+                            {messages.map((msg) => (
+                                <MessageBubble
+                                    key={msg.id}
+                                    message={msg}
+                                    onReact={handleReaction}
+                                    onSwipeReply={(m: any) => setReplyTo(m)}
+                                />
+                            ))}
+                            {typingUsers.size > 0 && (
+                                <div className="flex items-center gap-2 text-xs text-gray-500 ml-4 mb-2 animate-pulse">
+                                    <div className="flex gap-1">
+                                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-0" />
+                                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-100" />
+                                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-200" />
+                                    </div>
+                                    <span>{Array.from(typingUsers).join(', ')} is typing...</span>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {/* Input Area */}
+                {participantStatus === 'accepted' ? (
+                    <ChatInput
+                        onSend={handleSend}
+                        onTyping={handleTyping}
+                        replyTo={replyTo}
+                        onCancelReply={() => setReplyTo(null)}
+                    />
+                ) : (
+                    <div className="p-6 bg-white border-t border-gray-200 text-center safe-bottom">
+                        {participantStatus === 'blocked'
+                            ? <p className="text-gray-500">You have blocked this user.</p>
+                            : <p className="text-gray-500">Request pending.</p>
+                        }
+                    </div>
+                )}
             </div>
-
-            {/* Conditional Input Area */}
-            {participantStatus === 'accepted' ? (
-                <div className="p-3 bg-white flex items-end gap-2 safe-bottom">
-                    <div className="flex-1 bg-gray-100 rounded-3xl flex items-center px-4 py-2 transition-all focus-within:ring-1 focus-within:ring-[#ff1744] focus-within:bg-white">
-                        <button className="p-1 mr-2 text-gray-400 hover:text-gray-600">
-                            <Smile size={24} />
-                        </button>
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Message"
-                            className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-500 max-h-32 py-1"
-                        />
-                        <button className="p-1 ml-2 text-gray-400 hover:text-gray-600 rotate-45">
-                            <Paperclip size={22} />
-                        </button>
-                        {!inputValue && (
-                            <button className="p-1 ml-2 text-gray-400 hover:text-gray-600">
-                                <ImageIcon size={22} />
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="h-12 w-12 flex-shrink-0">
-                        {inputValue ? (
-                            <button
-                                onClick={handleSend}
-                                className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
-                            >
-                                <Send size={20} className="ml-1" />
-                            </button>
-                        ) : (
-                            <button className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95">
-                                <Mic size={22} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            ) : participantStatus === 'pending' ? (
-                <div className="p-4 bg-white border-t border-gray-200 safe-bottom">
-                    <div className="bg-gray-50 p-4 rounded-xl text-center mb-4">
-                        <ShieldAlert className="inline-block text-gray-400 mb-2" size={32} />
-                        <h4 className="font-bold text-gray-900 mb-1">Message Request</h4>
-                        <p className="text-sm text-gray-500">
-                            You don't follow this person. Do you want to accept their message invitation?
-                        </p>
-                    </div>
-                    <div className="flex gap-3">
-                        <button
-                            onClick={handleBlock}
-                            className="flex-1 py-3 text-red-500 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 active:scale-95 transition-all"
-                        >
-                            Block
-                        </button>
-                        <button
-                            onClick={handleAccept}
-                            className="flex-1 py-3 bg-[#ff1744] text-white font-bold rounded-xl shadow-md hover:bg-red-600 active:scale-95 transition-all"
-                        >
-                            Accept
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <div className="p-6 bg-white border-t border-gray-200 text-center safe-bottom">
-                    <p className="text-gray-500 font-medium">You have blocked this user.</p>
-                </div>
-            )}
         </div>
     );
 };

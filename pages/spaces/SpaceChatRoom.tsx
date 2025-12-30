@@ -27,7 +27,7 @@ const formatDate = (dateString: string) => {
     }
 };
 
-const SpaceChatRoomContent: React.FC = () => {
+export const SpaceChatRoomContent: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -232,8 +232,8 @@ const SpaceChatRoomContent: React.FC = () => {
                                 {isSequential && <div className="w-8" />}
 
                                 <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMe
-                                        ? 'bg-[#ff1744] text-white rounded-br-none'
-                                        : 'bg-white text-gray-800 shadow-sm rounded-bl-none'
+                                    ? 'bg-[#ff1744] text-white rounded-br-none'
+                                    : 'bg-white text-gray-800 shadow-sm rounded-bl-none'
                                     }`}>
                                     {!isMe && !isSequential && (
                                         <p className="text-[10px] font-bold opacity-60 mb-1">{msg.sender.full_name}</p>

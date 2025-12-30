@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Heart, Send } from 'lucide-react';
+import { X, Heart, Send, Eye, Mic } from 'lucide-react';
 import { Story } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
@@ -42,6 +42,21 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
         // Check if liked (In a real app, fetch this)
         // checkLikeStatus();
     }, [currentIndex, currentStory]);
+
+    useEffect(() => {
+        // Record View
+        const recordView = async () => {
+            if (!user || !currentStory) return;
+            // Don't record own view or if already viewed (optimization)
+            if (currentStory.user_id === user.id) return;
+
+            await supabase.from('story_views').insert({
+                story_id: currentStory.id,
+                user_id: user.id
+            }).then(({ error }) => { if (error && error.code !== '23505') console.error(error); }); // Ignore duplicates
+        };
+        recordView();
+    }, [currentStory, user]);
 
     // Timer Logic
     useEffect(() => {
@@ -178,6 +193,13 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
                     <span className="font-bold text-shadow">{currentStory.user?.username}</span>
                     <span className="text-white/70 text-sm">{new Date(currentStory.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
+                {/* View Count (Owner Only) */}
+                {user?.id === currentStory.user_id && (
+                    <div className="flex items-center gap-1 bg-black/40 px-3 py-1 rounded-full backdrop-blur-md">
+                        <Eye size={14} className="text-white" />
+                        <span className="text-xs font-bold text-white">{currentStory.views_count || 0}</span>
+                    </div>
+                )}
                 <button onClick={onClose}>
                     <X size={28} />
                 </button>
@@ -206,6 +228,33 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
                     />
                 ) : currentStory.type === 'image' ? (
                     <img src={currentStory.media_url} className="w-full h-full object-contain" alt="Story" />
+                ) : currentStory.type === 'voice' ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-red-500 to-pink-600 text-white">
+                        <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-8 animate-pulse">
+                            <Mic size={48} />
+                        </div>
+                        <audio controls src={currentStory.media_url} className="w-full max-w-sm mb-8" autoPlay />
+                        <p className="text-xl font-bold">Voice Note</p>
+                    </div>
+                ) : currentStory.type === 'poll' ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-yellow-400 to-orange-500 text-white">
+                        <h2 className="text-3xl font-bold text-center mb-8">{currentStory.content}</h2>
+                        <div className="w-full max-w-sm space-y-4">
+                            {currentStory.poll_options?.map((opt, idx) => (
+                                <button
+                                    key={idx}
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        // TODO: Implement voting logic securely
+                                        alert("Voting functionality coming soon!");
+                                    }}
+                                    className="w-full p-4 bg-white/20 hover:bg-white/30 rounded-xl text-left font-bold transition-all border border-white/30 backdrop-blur-md"
+                                >
+                                    {opt.text}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 ) : (
                     <div className="w-full h-full flex items-center justify-center p-8 text-center bg-gradient-to-br from-purple-600 to-blue-500">
                         <p className="text-2xl font-bold text-white">{currentStory.content}</p>

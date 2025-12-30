@@ -9,9 +9,10 @@ import { useAuth } from '../context/AuthContext';
 interface PostCardProps {
     post: Post;
     onDelete?: (id: string) => void;
+    onPin?: (id: string) => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin }) => {
     const { user } = useAuth();
     const [liked, setLiked] = useState(post.isLiked || false);
     const [likeCount, setLikeCount] = useState(post.likes);
@@ -159,6 +160,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                                 </button>
                                 {menuOpen && (
                                     <div className="absolute right-0 top-6 w-32 bg-white dark:bg-gray-800 shadow-lg rounded-xl border border-gray-100 dark:border-gray-700 p-1 z-10 animate-in fade-in zoom-in-95 duration-200">
+                                        {onPin && (
+                                            <button
+                                                onClick={() => { onPin(post.id); setMenuOpen(false); }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-left"
+                                            >
+                                                <BadgeCheck size={14} /> {post.is_pinned ? "Unpin" : "Pin"}
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => { setIsEditing(true); setMenuOpen(false); }}
                                             className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg text-left"
@@ -224,7 +233,18 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                             <span>{commentCount}</span>
                         </button>
 
-                        <button className="flex items-center gap-2 group hover:text-green-500 transition-colors text-sm">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                /* Placeholder for Repost logic - would open a confirm modal or create immediately */
+                                /* For now, simple console log or alert as per plan */
+                                if (confirm("Repost this?")) {
+                                    /* Logic would actully go here to call explicit handleRepost from parent or internal */
+                                    alert("Repost functionality requires custom Modal implementation. Coming soon!");
+                                }
+                            }}
+                            className="flex items-center gap-2 group hover:text-green-500 transition-colors text-sm"
+                        >
                             <div className="p-2 rounded-full group-hover:bg-green-50 dark:group-hover:bg-green-900/30 transition-colors">
                                 <Repeat size={18} />
                             </div>
@@ -244,7 +264,22 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete }) => {
                             <span>{likeCount}</span>
                         </button>
 
-                        <button className="flex items-center gap-2 group hover:text-blue-500 transition-colors text-sm">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (navigator.share) {
+                                    navigator.share({
+                                        title: `Post by ${post.author.name}`,
+                                        text: post.content,
+                                        url: window.location.href // In real app, deep link to post
+                                    });
+                                } else {
+                                    navigator.clipboard.writeText(post.content);
+                                    alert("Copied to clipboard!");
+                                }
+                            }}
+                            className="flex items-center gap-2 group hover:text-blue-500 transition-colors text-sm"
+                        >
                             <div className="p-2 rounded-full group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 transition-colors">
                                 <Share size={18} />
                             </div>

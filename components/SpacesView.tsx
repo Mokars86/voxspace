@@ -32,7 +32,24 @@ const SpacesView: React.FC = () => {
 
       if (error) throw error;
 
-      const formattedSpaces: Space[] = data.map((s: any) => ({
+      // Filter out spaces user has already joined
+      let recommended = data;
+      if (user) {
+        const { data: joinedData } = await supabase
+          .from('space_members')
+          .select('space_id')
+          .eq('user_id', user.id);
+
+        const joinedIds = new Set(joinedData?.map((j: any) => j.space_id));
+        // If we want to show ONLY recommended (not joined), uncomment below:
+        // recommended = data.filter((s: any) => !joinedIds.has(s.id));
+
+        // Current logic: Show all, but could add visuals. 
+        // Requirement was "Recommended Spaces". Assuming strictly unjoined.
+        recommended = data.filter((s: any) => !joinedIds.has(s.id));
+      }
+
+      const formattedSpaces: Space[] = recommended.slice(0, 10).map((s: any) => ({
         id: s.id,
         name: s.name,
         description: s.description,
@@ -82,8 +99,8 @@ const SpacesView: React.FC = () => {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeCategory === cat
-                  ? 'bg-black dark:bg-white text-white dark:text-black'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                ? 'bg-black dark:bg-white text-white dark:text-black'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
             >
               {cat}
@@ -120,7 +137,7 @@ const SpacesView: React.FC = () => {
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Globe size={20} className="text-blue-500" />
-            <h3 className="font-bold text-lg dark:text-white">Popular Spaces</h3>
+            <h3 className="font-bold text-lg dark:text-white">Recommended Spaces</h3>
           </div>
 
           {loading ? (

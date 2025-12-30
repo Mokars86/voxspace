@@ -21,7 +21,7 @@ const ChatView: React.FC = () => {
       // 1. Get all chats where the current user is a participant
       const { data: myChats, error: myChatsError } = await supabase
         .from('chat_participants')
-        .select('chat_id, is_archived, status, chats(id, name, is_group)')
+        .select('chat_id, is_archived, is_pinned, status, chats(id, name, is_group)')
         .eq('user_id', user.id);
 
       if (myChatsError) throw myChatsError;
@@ -83,6 +83,7 @@ const ChatView: React.FC = () => {
           avatar: avatar,
           isOnline: isOnline,
           isArchived: myChat.is_archived,
+          isPinned: myChat.is_pinned,
           isGroup: chatInfo?.is_group ?? false,
           status: myChat.status || 'accepted'
         };
@@ -116,6 +117,23 @@ const ChatView: React.FC = () => {
     } catch (error) {
       console.error("Error archiving chat:", error);
       alert("Could not archive chat");
+    }
+  };
+
+  const handlePin = async (e: React.MouseEvent, chatId: string, currentStatus: boolean) => {
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('chat_participants')
+        .update({ is_pinned: !currentStatus })
+        .eq('chat_id', chatId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      fetchChats(); // Refresh list
+    } catch (error) {
+      console.error("Error pinning chat:", error);
     }
   };
 
@@ -191,6 +209,11 @@ const ChatView: React.FC = () => {
     }
 
     return matchesFilter && matchesTab;
+  }).sort((a, b) => {
+    // Sort: Pinned first, then by date (implied by array order since we sorted messages, but stricter sort logic here is good)
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return 0; // Existing order preserved (created_at desc)
   });
 
   return (
@@ -262,7 +285,8 @@ const ChatView: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-baseline mb-1">
                   <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate pr-2">{chat.name}</h3>
-                  <span className={cn("text-xs whitespace-nowrap", chat.unread > 0 ? "text-[#ff1744] font-bold" : "text-gray-400")}>
+                  <span className={cn("text-xs whitespace-nowrap flex items-center gap-1", chat.unread > 0 ? "text-[#ff1744] font-bold" : "text-gray-400")}>
+                    {chat.isPinned && <span className="text-[10px]">📌</span>}
                     {chat.time}
                   </span>
                 </div>
@@ -279,6 +303,13 @@ const ChatView: React.FC = () => {
                       title={chat.isArchived ? "Unarchive" : "Archive"}
                     >
                       <Archive size={16} />
+                    </button>
+                    <button
+                      onClick={(e) => handlePin(e, chat.id, chat.isPinned || false)}
+                      className={cn("p-1.5 rounded-full", chat.isPinned ? "text-[#ff1744] bg-red-50" : "text-gray-500 hover:text-[#ff1744] hover:bg-red-50")}
+                      title={chat.isPinned ? "Unpin" : "Pin"}
+                    >
+                      <div className="rotate-45">📌</div>
                     </button>
                     <button
                       onClick={(e) => handleDelete(e, chat.id)}

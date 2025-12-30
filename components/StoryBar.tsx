@@ -44,7 +44,15 @@ const StoryBar: React.FC = () => {
             if (data) {
                 // Separate my stories from others
                 const mine = data.filter(s => s.user_id === user?.id);
-                const others = data.filter(s => s.user_id !== user?.id);
+
+                // Filter others stories based on privacy (Mocking RLS behavior in UI if RLS not strict)
+                const others = data.filter(s => {
+                    if (s.user_id === user?.id) return false;
+                    if (s.privacy_level === 'only_me') return false;
+                    // TODO: Implement 'followers' check (requires knowing if I follow them)
+                    // For now, allow followers/public
+                    return true;
+                });
 
                 setMyStories(mine);
 

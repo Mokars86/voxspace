@@ -33,7 +33,8 @@ const FeedView: React.FC = () => {
                 username,
                 avatar_url,
                 is_verified
-            )
+            ),
+            post_likes(user_id)
         `)
         .order('created_at', { ascending: false });
 
@@ -95,7 +96,8 @@ const FeedView: React.FC = () => {
         likes: item.likes_count || 0,
         comments: item.comments_count || 0,
         reposts: item.reposts_count || 0,
-        media: item.media_url
+        media: item.media_url,
+        isLiked: user ? item.post_likes?.some((l: any) => l.user_id === user.id) : false
       }));
 
       setPosts(formattedPosts);
