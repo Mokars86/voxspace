@@ -86,6 +86,7 @@ const FeedView: React.FC = () => {
       const formattedPosts: Post[] = data.map((item: any) => ({
         id: item.id,
         author: {
+          id: item.user_id,
           name: item.profiles?.full_name || 'Unknown',
           username: item.profiles?.username || 'user',
           avatar: item.profiles?.avatar_url || '',

@@ -184,12 +184,18 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                                 <input
                                     value={editText}
                                     onChange={(e) => setEditText(e.target.value)}
-                                    className="bg-white/20 text-white rounded p-1 outline-none border border-white/30"
+                                    className={cn(
+                                        "rounded p-2 outline-none border transition-colors w-full",
+                                        isMe
+                                            ? "bg-white/20 text-white border-white/30 placeholder:text-white/60 focus:bg-white/30"
+                                            : "bg-gray-100 text-gray-900 border-gray-200 focus:bg-white focus:border-blue-500"
+                                    )}
                                     autoFocus
+                                    onClick={(e) => e.stopPropagation()}
                                 />
                                 <div className="flex justify-end gap-2 text-xs font-bold">
-                                    <button onClick={() => setIsEditing(false)}>Cancel</button>
-                                    <button onClick={handleSaveEdit} className="bg-white text-[#ff1744] px-2 py-1 rounded">Save</button>
+                                    <button onClick={(e) => { e.stopPropagation(); setIsEditing(false); }} className={cn("px-2 py-1 rounded hover:bg-black/10", isMe ? "text-white" : "text-gray-500")}>Cancel</button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className={cn("px-2 py-1 rounded shadow-sm", isMe ? "bg-white text-[#ff1744] hover:bg-gray-50" : "bg-blue-500 text-white hover:bg-blue-600")}>Save</button>
                                 </div>
                             </div>
                         ) : (
@@ -227,7 +233,7 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                 {message.reactions && Object.keys(message.reactions).length > 0 && (
                     <div className="absolute -bottom-2 -left-2 bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 rounded-full px-1.5 py-0.5 flex text-xs">
                         {Object.entries(message.reactions).map(([emoji, count]) => (
-                            <span key={emoji}>{emoji} {count > 1 ? count : ''}</span>
+                            <span key={emoji}>{emoji} {(count as number) > 1 ? count : ''}</span>
                         ))}
                     </div>
                 )}

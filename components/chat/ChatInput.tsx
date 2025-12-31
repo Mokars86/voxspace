@@ -12,8 +12,11 @@ interface ChatInputProps {
     onCancelReply?: () => void;
 }
 
+const COMMON_EMOJIS = ["😀", "😂", "🥰", "😍", "😭", "😮", "😡", "👍", "👎", "🔥", "✨", "🎉", "💯", "🙏", "👋", "🤔", "👀", "🧠", "💀", "👻", "💩", "🤡", "❤️", "🧡", "💛", "💚", "💙", "💜", "🚀", "🌟"];
+
 const ChatInput: React.FC<ChatInputProps> = ({ onSend, onTyping, replyTo, onCancelReply }) => {
     const [inputValue, setInputValue] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
     const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -24,6 +27,11 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, onTyping, replyTo, onCanc
     const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setInputValue(e.target.value);
         if (onTyping) onTyping();
+    };
+
+    const handleEmojiClick = (emoji: string) => {
+        setInputValue(prev => prev + emoji);
+        // Optional: keep picker open or close it. Keeping it open is usually better for multiple emojis.
     };
 
     const startRecording = async () => {
@@ -110,86 +118,104 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, onTyping, replyTo, onCanc
                 </div>
             )}
 
-            <div className="p-3 bg-white flex items-end gap-2 safe-bottom w-full shadow-[0_-2px_10px_rgba(0,0,0,0.03)] z-20">
-                {isRecording ? (
-                    <div className="flex-1 bg-red-50 rounded-3xl flex items-center justify-between px-4 py-3 animate-pulse border border-red-100">
-                        <div className="flex items-center gap-3 text-red-500 font-medium">
-                            <div className="w-3 h-3 bg-red-500 rounded-full animate-ping" />
-                            <span>Recording {formatDuration(recordingDuration)}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <button onClick={() => stopRecording(false)} className="text-gray-400 hover:text-red-500">
-                                <Trash2 size={24} />
-                            </button>
-                            <button onClick={() => stopRecording(true)} className="w-10 h-10 bg-[#ff1744] text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                                <Send size={20} className="ml-1" />
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        <div className="flex-1 bg-gray-100 rounded-3xl flex items-center px-4 py-2 transition-all focus-within:ring-1 focus-within:ring-[#ff1744] focus-within:bg-white">
-                            <button className="p-1 mr-2 text-gray-400 hover:text-gray-600">
-                                <Smile size={24} />
-                            </button>
-
-                            <input
-                                type="text"
-                                value={inputValue}
-                                onChange={handleTextChange}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleSendClick();
-                                }}
-                                placeholder="Message..."
-                                className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-500 max-h-32 py-1 min-w-0"
-                            />
-
-                            <button onClick={() => fileInputRef.current?.click()} className="p-1 ml-2 text-gray-400 hover:text-gray-600 rotate-45">
-                                <Paperclip size={22} />
-                            </button>
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                className="hidden"
-                                accept="image/*,video/*"
-                                onChange={handleFileSelect}
-                            />
-
-                            {!inputValue && (
-                                <>
-                                    <button onClick={() => fileInputRef.current?.click()} className="p-1 ml-2 text-gray-400 hover:text-gray-600">
-                                        <ImageIcon size={22} />
-                                    </button>
-                                    <button
-                                        onClick={() => (onSend as any)("BUZZ!", 'buzz')}
-                                        className="p-1 ml-2 text-yellow-500 hover:text-yellow-600 active:scale-110 transition-transform"
-                                        title="Send a Buzz!"
-                                    >
-                                        <Zap size={22} fill="currentColor" />
-                                    </button>
-                                </>
-                            )}
-                        </div>
-
-                        <div className="h-12 w-12 flex-shrink-0">
-                            {inputValue ? (
-                                <button
-                                    onClick={handleSendClick}
-                                    className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
-                                >
+            <div className="bg-white w-full safe-bottom shadow-sm z-20 border-t border-gray-100 dark:border-gray-800">
+                <div className="flex items-end gap-2 p-2">
+                    {isRecording ? (
+                        <div className="flex-1 bg-red-50 rounded-3xl flex items-center justify-between px-4 py-3 animate-pulse border border-red-100">
+                            <div className="flex items-center gap-3 text-red-500 font-medium">
+                                <div className="w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                                <span>Recording {formatDuration(recordingDuration)}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => stopRecording(false)} className="text-gray-400 hover:text-red-500">
+                                    <Trash2 size={24} />
+                                </button>
+                                <button onClick={() => stopRecording(true)} className="w-10 h-10 bg-[#ff1744] text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                     <Send size={20} className="ml-1" />
                                 </button>
-                            ) : (
-                                <button
-                                    onClick={startRecording}
-                                    className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
-                                >
-                                    <Mic size={22} />
-                                </button>
-                            )}
+                            </div>
                         </div>
-                    </>
-                )}
+                    ) : (
+                        <>
+                            <div className="flex-1 min-w-0 bg-gray-100 rounded-3xl flex items-center px-3 py-2 transition-all focus-within:ring-1 focus-within:ring-[#ff1744] focus-within:bg-white relative">
+                                {showEmojiPicker && (
+                                    <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl rounded-2xl p-4 grid grid-cols-6 gap-2 w-64 h-48 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        {COMMON_EMOJIS.map(emoji => (
+                                            <button
+                                                key={emoji}
+                                                onClick={() => handleEmojiClick(emoji)}
+                                                className="text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors"
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                    className={cn("p-1 mr-1 text-gray-400 hover:text-gray-600 flex-shrink-0 transition-colors", showEmojiPicker && "text-[#ff1744]")}
+                                >
+                                    <Smile size={24} />
+                                </button>
+
+                                <input
+                                    type="text"
+                                    value={inputValue}
+                                    onChange={handleTextChange}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleSendClick();
+                                    }}
+                                    placeholder="Message..."
+                                    className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-500 max-h-32 py-1 min-w-0"
+                                />
+
+                                <button onClick={() => fileInputRef.current?.click()} className="p-1 ml-2 text-gray-400 hover:text-gray-600 rotate-45">
+                                    <Paperclip size={22} />
+                                </button>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    accept="image/*,video/*"
+                                    onChange={handleFileSelect}
+                                />
+
+                                {!inputValue && (
+                                    <>
+                                        <button onClick={() => fileInputRef.current?.click()} className="p-1 ml-2 text-gray-400 hover:text-gray-600">
+                                            <ImageIcon size={22} />
+                                        </button>
+                                        <button
+                                            onClick={() => (onSend as any)("BUZZ!", 'buzz')}
+                                            className="p-1 ml-2 text-yellow-500 hover:text-yellow-600 active:scale-110 transition-transform"
+                                            title="Send a Buzz!"
+                                        >
+                                            <Zap size={22} fill="currentColor" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="h-12 w-12 flex-shrink-0">
+                                {inputValue ? (
+                                    <button
+                                        onClick={handleSendClick}
+                                        className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
+                                    >
+                                        <Send size={20} className="ml-1" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={startRecording}
+                                        className="w-full h-full bg-[#ff1744] hover:bg-[#d50000] text-white rounded-full flex items-center justify-center shadow-md transition-all active:scale-95"
+                                    >
+                                        <Mic size={22} />
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );

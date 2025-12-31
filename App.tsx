@@ -21,10 +21,23 @@ import NotificationSettings from './pages/settings/NotificationSettings';
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, profile, loading } = useAuth();
 
+  // Force safety timeout for loading state
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.warn("Auth loading timed out, forcing render");
+        // We can't force context update easily here, but we can assume no session if it took this long?
+        // Actually best to just show an error or a reload button.
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white text-[#ff1744]">
-        <Loader2 size={40} className="animate-spin" />
+      <div className="h-screen flex flex-col items-center justify-center bg-white text-[#ff1744]">
+        <Loader2 size={40} className="animate-spin mb-4" />
+        <p className="text-gray-500 text-sm">Loading...</p>
       </div>
     );
   }

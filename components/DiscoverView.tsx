@@ -12,6 +12,7 @@ const DiscoverView: React.FC = () => {
   const [trendingPosts, setTrendingPosts] = useState<any[]>([]);
   const [popularSpaces, setPopularSpaces] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<{ users: any[], spaces: any[] }>({ users: [], spaces: [] });
+  const [suggestedUsers, setSuggestedUsers] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   const [activeTab, setActiveTab] = useState('For you');
@@ -44,6 +45,15 @@ const DiscoverView: React.FC = () => {
 
         if (spaces) setPopularSpaces(spaces);
 
+        // Fetch Suggested Users (Newest)
+        const { data: newUsers } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (newUsers) setSuggestedUsers(newUsers);
+
       } catch (error) {
         console.error("Error fetching discover data", error);
       } finally {
@@ -54,7 +64,37 @@ const DiscoverView: React.FC = () => {
     fetchDiscoverData();
   }, [activeTab]); // Fetch when tab changes
 
-  // ... (Search Handler same)
+  useEffect(() => {
+    const delaySearch = setTimeout(async () => {
+      if (searchTerm.trim().length === 0) {
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const { data: users } = await supabase
+          .from('profiles')
+          .select('*')
+          .or(`username.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`)
+          .limit(5);
+
+        const { data: spaces } = await supabase
+          .from('spaces')
+          .select('*')
+          .ilike('name', `%${searchTerm}%`)
+          .limit(5);
+
+        setSearchResults({ users: users || [], spaces: spaces || [] });
+      } catch (error) {
+        console.error("Search error:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(delaySearch);
+  }, [searchTerm]);
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
@@ -146,8 +186,8 @@ const DiscoverView: React.FC = () => {
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={`px-4 py-1.5 rounded-full font-bold whitespace-nowrap transition-colors ${activeTab === tab
-                        ? 'bg-[#ff1744] text-white'
-                        : 'bg-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      ? 'bg-[#ff1744] text-white'
+                      : 'bg-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                   >
                     {tab}
@@ -177,6 +217,31 @@ const DiscoverView: React.FC = () => {
               )) : (
                 <div className="text-gray-400 dark:text-gray-500 text-sm py-4">No trending posts yet.</div>
               )}
+            </div>
+
+            {/* Suggested Users */}
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="font-bold text-xl mb-4 dark:text-white">Suggested for you</h3>
+              <div className="flex overflow-x-auto hide-scrollbar gap-4 pb-2">
+                {suggestedUsers.map(user => (
+                  <div
+                    key={user.id}
+                    onClick={() => navigate(`/user/${user.id}`)}
+                    className="flex flex-col items-center gap-2 min-w-[80px] cursor-pointer"
+                  >
+                    <div className="w-16 h-16 rounded-full bg-gray-200 overflow-hidden border-2 border-white dark:border-gray-700 shadow-sm">
+                      <img
+                        src={user.avatar_url || `https://ui-avatars.com/api/?name=${user.full_name}&background=random`}
+                        alt={user.username}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate max-w-[80px]">{user.full_name?.split(' ')[0]}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Popular Spaces */}

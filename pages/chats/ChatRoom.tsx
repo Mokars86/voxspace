@@ -63,6 +63,7 @@ const ChatRoom: React.FC = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatName, setChatName] = useState('Chat');
     const [chatAvatar, setChatAvatar] = useState('');
+    const [otherUserId, setOtherUserId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [participantStatus, setParticipantStatus] = useState<'accepted' | 'pending' | 'rejected' | 'blocked'>('accepted');
     const [replyTo, setReplyTo] = useState<any>(null);
@@ -112,7 +113,7 @@ const ChatRoom: React.FC = () => {
                 } else {
                     const { data: participants } = await supabase
                         .from('chat_participants')
-                        .select('profiles(full_name, avatar_url)')
+                        .select('user_id, profiles(full_name, avatar_url)')
                         .eq('chat_id', chatId)
                         .neq('user_id', user.id)
                         .single();
@@ -121,6 +122,7 @@ const ChatRoom: React.FC = () => {
                         const profile: any = Array.isArray(participants.profiles) ? participants.profiles[0] : participants.profiles;
                         setChatName(profile.full_name);
                         setChatAvatar(profile.avatar_url);
+                        setOtherUserId(participants.user_id);
                     }
                 }
 
@@ -405,7 +407,10 @@ const ChatRoom: React.FC = () => {
                                 <ArrowLeft size={24} />
                             </button>
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 overflow-hidden">
+                                <div
+                                    className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 overflow-hidden cursor-pointer"
+                                    onClick={() => otherUserId && navigate(`/user/${otherUserId}`)}
+                                >
                                     {chatAvatar ? <img src={chatAvatar} className="w-full h-full object-cover" alt="avatar" /> : chatName[0]}
                                 </div>
                                 <div>

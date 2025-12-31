@@ -140,14 +140,14 @@ const Onboarding: React.FC = () => {
                                 placeholder="Display Name"
                                 value={displayName}
                                 onChange={e => setDisplayName(e.target.value)}
-                                className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:border-[#ff1744]/20 outline-none font-semibold"
+                                className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:border-[#ff1744]/20 outline-none font-semibold text-gray-900"
                             />
                             <input
                                 type="text"
                                 placeholder="@username"
                                 value={username}
                                 onChange={e => setUsername(e.target.value)}
-                                className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:border-[#ff1744]/20 outline-none font-semibold"
+                                className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:border-[#ff1744]/20 outline-none font-semibold text-gray-900"
                             />
                         </div>
                     </div>

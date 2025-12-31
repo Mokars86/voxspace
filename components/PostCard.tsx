@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Heart, MessageCircle, Repeat, Share, MoreHorizontal, BadgeCheck, Trash2, Edit2, Send, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Post } from '../types';
@@ -13,6 +14,7 @@ interface PostCardProps {
 }
 
 const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin }) => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const [liked, setLiked] = useState(post.isLiked || false);
     const [likeCount, setLikeCount] = useState(post.likes);
@@ -131,7 +133,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin }) => {
     return (
         <article className="p-4 border-b border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50/30 dark:hover:bg-gray-800/30 transition-colors">
             <div className="flex gap-3">
-                <div className="flex-shrink-0">
+                <div
+                    className="flex-shrink-0 cursor-pointer"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/user/${post.author.id}`);
+                    }}
+                >
                     <img
                         src={post.author.avatar || `https://ui-avatars.com/api/?name=${post.author.name}&background=random`}
                         alt={post.author.name}

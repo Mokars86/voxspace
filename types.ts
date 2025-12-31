@@ -4,6 +4,7 @@ export type TabType = 'chats' | 'feed' | 'spaces' | 'discover' | 'profile' | 'wa
 export interface Post {
   id: string;
   author: {
+    id: string;
     name: string;
     username: string;
     avatar: string;
