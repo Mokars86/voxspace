@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-    ArrowLeft, Phone, Video, MoreVertical, Loader2, ShieldAlert,
-    Info, Users, Image as ImageIcon, VolumeX, LogOut, CheckCircle2, Clock
+    ArrowLeft, Phone, Video, MoreVertical, Loader2, Clock
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
@@ -10,15 +9,14 @@ import { supabase } from '../../services/supabase';
 import MessageBubble, { ChatMessage } from '../../components/chat/MessageBubble';
 import ChatInput from '../../components/chat/ChatInput';
 import ForwardModal from '../../components/chat/ForwardModal';
+import CallOverlay from '../../components/chat/CallOverlay';
+import { useWebRTC } from '../../hooks/useWebRTC';
 
 interface Message extends ChatMessage { }
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-    constructor(props: any) {
-        super(props);
-        this.state = { hasError: false, error: null };
-    }
+    state = { hasError: false, error: null };
 
     static getDerivedStateFromError(error: any) {
         return { hasError: true, error };
@@ -74,6 +72,7 @@ const ChatRoom: React.FC = () => {
     const typingTimeoutRef = useRef<any>(null);
     const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const { callState, callerInfo, isMuted, startCall, answerCall, endCall, handleSignal, toggleMute } = useWebRTC(user, chatId);
 
     useEffect(() => {
         listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -142,6 +141,7 @@ const ChatRoom: React.FC = () => {
                         { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
                         (payload) => handleNewMessage(payload.new)
                     )
+                    .on('broadcast', { event: 'signal' }, (payload) => handleSignal(payload.payload))
                     .on('presence', { event: 'sync' }, () => {
                         const state = channel.presenceState();
                         const typing = new Set<string>();
@@ -202,7 +202,9 @@ const ChatRoom: React.FC = () => {
 
     const triggerBuzz = () => {
         setIsBuzzing(true);
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([400, 100, 400]); // Stronger vibration
+        }
         setTimeout(() => setIsBuzzing(false), 1000);
     };
 
@@ -251,7 +253,7 @@ const ChatRoom: React.FC = () => {
         }
     };
 
-    const handleSend = async (content: string, type: 'text' | 'image' | 'video' | 'voice' | 'buzz', file?: File, duration?: number, extras?: any) => {
+    const handleSend = async (content: string, type: 'text' | 'image' | 'video' | 'voice' | 'buzz' | 'location' | 'audio' | 'file', file?: File, duration?: number, metadata?: any) => {
         if (!user || !chatId) return;
 
         let mediaUrl = '';
@@ -275,6 +277,10 @@ const ChatRoom: React.FC = () => {
             mediaUrl = data.publicUrl;
         }
 
+        // Construct metadata object
+        const finalMetadata = { ...metadata };
+        if (duration) finalMetadata.duration = duration;
+
         const optimisticMsg: Message = {
             id: Date.now().toString(),
             text: content,
@@ -283,7 +289,7 @@ const ChatRoom: React.FC = () => {
             type: type,
             status: 'sent',
             mediaUrl: mediaUrl,
-            metadata: { duration },
+            metadata: finalMetadata,
             replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, sender: replyTo.sender } : undefined
         };
 
@@ -297,7 +303,7 @@ const ChatRoom: React.FC = () => {
                 content: content,
                 type: type,
                 media_url: mediaUrl,
-                metadata: { duration },
+                metadata: finalMetadata,
                 reply_to_id: replyTo?.id
             });
 
@@ -428,7 +434,9 @@ const ChatRoom: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-4 text-[#ff1744]">
                             <Video size={24} />
-                            <Phone size={22} />
+                            <button onClick={startCall} className="hover:text-red-600 transition-colors">
+                                <Phone size={22} />
+                            </button>
                             <button
                                 onClick={() => {
                                     const duration = prompt("Set disappearing messages (minutes)? Enter 0 to disable.");
@@ -502,6 +510,18 @@ const ChatRoom: React.FC = () => {
                     isOpen={!!forwardingMessage}
                     onClose={() => setForwardingMessage(null)}
                     onSend={handleForwardToChats}
+                />
+
+                <CallOverlay
+                    isOpen={callState !== 'idle'}
+                    state={callState}
+                    callerName={callerInfo?.name || chatName}
+                    callerAvatar={callerInfo?.avatar || chatAvatar}
+                    isAudioEnabled={!isMuted}
+                    onToggleAudio={toggleMute}
+                    onAccept={answerCall}
+                    onReject={endCall}
+                    onHangup={endCall}
                 />
 
                 {/* Image Preview Modal */}

@@ -6,6 +6,7 @@ import { Post } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { useNavigate } from 'react-router-dom';
+import ImageViewer from './ImageViewer';
 
 interface ProfileData {
   full_name: string;
@@ -26,6 +27,7 @@ const ProfileView: React.FC = () => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -59,6 +61,7 @@ const ProfileView: React.FC = () => {
         const formattedPosts: Post[] = postsData.map((item: any) => ({
           id: item.id,
           author: {
+            id: user.id,
             name: profileData?.full_name || 'User',
             username: profileData?.username || 'user',
             avatar: profileData?.avatar_url,
@@ -111,11 +114,17 @@ const ProfileView: React.FC = () => {
       {/* Profile Info */}
       <div className="px-4 pb-4 relative">
         <div className="flex justify-between items-end -mt-10 mb-4">
-          <img
-            src={displayProfile.avatar_url || `https://ui-avatars.com/api/?name=${displayProfile.full_name || 'User'}&background=random`}
-            alt="Profile"
-            className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-900 object-cover"
-          />
+          <button
+            onClick={() => displayProfile.avatar_url && setPreviewImage(displayProfile.avatar_url)}
+            className={`rounded-full ${displayProfile.avatar_url ? 'cursor-pointer' : 'cursor-default'}`}
+            disabled={!displayProfile.avatar_url}
+          >
+            <img
+              src={displayProfile.avatar_url || `https://ui-avatars.com/api/?name=${displayProfile.full_name || 'User'}&background=random`}
+              alt="Profile"
+              className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-900 object-cover hover:opacity-90 transition-opacity"
+            />
+          </button>
           <button
             onClick={() => navigate('/settings')}
             className="px-4 py-1.5 border border-gray-300 dark:border-gray-700 rounded-full font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-800 dark:text-gray-200 transition-colors"
@@ -195,6 +204,12 @@ const ProfileView: React.FC = () => {
           </div>
         )}
       </div>
+
+      <ImageViewer
+        isOpen={!!previewImage}
+        onClose={() => setPreviewImage(null)}
+        src={previewImage || ''}
+      />
     </div>
   );
 };

@@ -21,27 +21,50 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, onSend }) 
         const fetchChats = async () => {
             setLoading(true);
             try {
-                // Fetch chats I'm in
-                const { data, error } = await supabase
+                // 1. Fetch chats I'm in
+                const { data: myChats, error: myChatsError } = await supabase
                     .from('chat_participants')
-                    .select(`
-                        chat:chats (
-                            id,
-                            name,
-                            is_group
-                        )
-                    `)
+                    .select('chat_id, chat:chats (id, name, is_group)')
                     .eq('user_id', user.id);
 
-                if (error) throw error;
+                if (myChatsError) throw myChatsError;
 
-                // Flatten and dedupe
-                const fetchedChats = data.map((d: any) => d.chat).filter(Boolean);
+                const chatIds = myChats.map((c: any) => c.chat_id);
+                if (chatIds.length === 0) {
+                    setChats([]);
+                    setLoading(false);
+                    return;
+                }
 
-                // For direct chats, we might want to fetch the other person's name, 
-                // but for speed we'll stick to 'name' or 'Chat' for now. 
-                // A production app would fetch profile names here.
-                setChats(fetchedChats);
+                // 2. Fetch other participants for DMs
+                const { data: participants, error: partError } = await supabase
+                    .from('chat_participants')
+                    .select('chat_id, profiles(full_name, avatar_url)')
+                    .in('chat_id', chatIds)
+                    .neq('user_id', user.id);
+
+                if (partError) throw partError;
+
+                // 3. Merge Data
+                const formattedChats = myChats.map((item: any) => {
+                    const chat = item.chat;
+                    if (chat.is_group) {
+                        return chat;
+                    } else {
+                        // Find other participant
+                        const other = participants?.find((p: any) => p.chat_id === chat.id);
+                        const profiles: any = other?.profiles;
+                        const profile = Array.isArray(profiles) ? profiles[0] : profiles;
+
+                        return {
+                            ...chat,
+                            name: profile?.full_name || 'User',
+                            avatar_url: profile?.avatar_url
+                        };
+                    }
+                });
+
+                setChats(formattedChats);
             } catch (err) {
                 console.error("Failed to load chats", err);
             } finally {
@@ -91,8 +114,12 @@ const ForwardModal: React.FC<ForwardModalProps> = ({ isOpen, onClose, onSend }) 
                                     className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center font-bold text-gray-500">
-                                            {chat.name?.[0] || '?'}
+                                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center font-bold text-gray-500 overflow-hidden">
+                                            {chat.avatar_url ? (
+                                                <img src={chat.avatar_url} alt={chat.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                chat.name?.[0] || '?'
+                                            )}
                                         </div>
                                         <span className="font-medium">{chat.name || 'Untitled Chat'}</span>
                                     </div>

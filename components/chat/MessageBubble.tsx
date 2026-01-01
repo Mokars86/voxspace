@@ -1,13 +1,13 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import { Check, CheckCheck, Play, Pause, File as FileIcon } from 'lucide-react';
+import { Check, CheckCheck, Play, Pause, File as FileIcon, MapPin, Music } from 'lucide-react';
 
 export interface ChatMessage {
     id: string;
     text: string;
     sender: 'me' | 'them';
     time: string;
-    type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'buzz';
+    type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'buzz' | 'location' | 'audio';
     status: 'sent' | 'delivered' | 'read';
     mediaUrl?: string;
     metadata?: any;
@@ -78,6 +78,18 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                             <button onClick={() => setIsEditing(true)} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium">Edit</button>
                         )}
                         <button onClick={() => { onForward && onForward(message); setShowMenu(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium">Forward</button>
+                        {message.type === 'text' && (
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(message.text);
+                                    setShowMenu(false);
+                                    /* Optional: Show toast */
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium"
+                            >
+                                Copy Text
+                            </button>
+                        )}
                         {isMe && (
                             <button onClick={() => { onDelete && onDelete(message.id); setShowMenu(false); }} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-500 text-sm font-medium">Delete</button>
                         )}
@@ -123,8 +135,8 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                         </div>
                     )}
 
-                    {/* Media: Voice */}
-                    {message.type === 'voice' && message.mediaUrl && (
+                    {/* Media: Voice OR Audio */}
+                    {(message.type === 'voice' || message.type === 'audio') && message.mediaUrl && (
                         <div className="flex items-center gap-3 min-w-[200px] py-2">
                             <button
                                 onClick={() => setIsPlaying(!isPlaying)}
@@ -135,21 +147,30 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                             >
                                 {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
                             </button>
-                            {/* Fake waveform */}
+                            {/* Fake waveform or Music Icon */}
                             <div className="flex-1 flex items-center gap-0.5 h-6">
-                                {[...Array(20)].map((_, i) => (
-                                    <div
-                                        key={i}
-                                        className={cn(
-                                            "w-1 rounded-full",
-                                            isMe ? "bg-white/50" : "bg-gray-300"
-                                        )}
-                                        style={{ height: Math.random() * 100 + '%' }}
-                                    />
-                                ))}
+                                {message.type === 'audio' ? (
+                                    <div className="flex items-center gap-2 w-full">
+                                        <Music size={16} className="opacity-70" />
+                                        <div className={cn("h-1 flex-1 rounded-full", isMe ? "bg-white/30" : "bg-gray-200")}>
+                                            <div className={cn("h-full w-1/3 rounded-full", isMe ? "bg-white" : "bg-gray-400")} />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    [...Array(20)].map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className={cn(
+                                                "w-1 rounded-full",
+                                                isMe ? "bg-white/50" : "bg-gray-300"
+                                            )}
+                                            style={{ height: Math.random() * 100 + '%' }}
+                                        />
+                                    ))
+                                )}
                             </div>
                             <span className="text-xs opacity-70">
-                                {message.metadata?.duration || '0:15'}
+                                {message.metadata?.duration ? message.metadata.duration : message.type === 'audio' ? 'Audio' : '0:15'}
                             </span>
                             {/* Note: Real audio player needed here normally */}
                             {isPlaying && <audio src={message.mediaUrl} autoPlay onEnded={() => setIsPlaying(false)} className="hidden" />}
@@ -173,6 +194,26 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                                     {message.text || "Attachment"}
                                 </p>
                                 <span className="text-xs opacity-70">Click to open</span>
+                            </div>
+                        </a>
+                    )}
+
+                    {/* Location */}
+                    {message.type === 'location' && (
+                        <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${message.metadata?.lat},${message.metadata?.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block overflow-hidden rounded-xl mb-1"
+                        >
+                            {/* Static Map Placeholder - In real app use Google Maps Static API or Leaflet */}
+                            <div className="bg-gray-200 h-32 w-full flex items-center justify-center relative">
+                                <MapPin size={32} className="text-[#ff1744] drop-shadow-md z-10" />
+                                <div className="absolute inset-0 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover opacity-20"></div>
+                            </div>
+                            <div className={cn("p-2 text-sm", isMe ? "bg-white/10" : "bg-gray-50")}>
+                                <div className="font-bold flex items-center gap-1"><MapPin size={12} /> Location Shared</div>
+                                <div className="opacity-80 text-xs truncate">{message.metadata?.lat?.toFixed(5)}, {message.metadata?.lng?.toFixed(5)}</div>
                             </div>
                         </a>
                     )}

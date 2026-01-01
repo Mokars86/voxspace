@@ -115,6 +115,10 @@ const FeedView: React.FC = () => {
     }
   };
 
+  const handleDeletePost = (id: string) => {
+    setPosts(prev => prev.filter(p => p.id !== id));
+  };
+
   useEffect(() => {
     fetchPosts();
 
@@ -216,7 +220,7 @@ const FeedView: React.FC = () => {
         ) : (
           posts.length > 0 ? (
             posts.map(post => (
-              <PostCard key={post.id} post={post} />
+              <PostCard key={post.id} post={post} onDelete={handleDeletePost} />
             ))
           ) : (
             <div className="p-8 text-center text-gray-500">

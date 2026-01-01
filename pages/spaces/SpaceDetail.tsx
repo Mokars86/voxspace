@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, MessageSquare, Mic, Globe, Share2, MoreVertical, Loader2, Camera, Trash2, Calendar, Image as ImageIcon, Pin } from 'lucide-react';
+import { ArrowLeft, Users, MessageSquare, Mic, Globe, Share2, MoreVertical, Loader2, Camera, Trash2, Calendar, Image as ImageIcon, Pin, X, StopCircle, Play, Pause } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 import { Post, SpaceEvent } from '../../types';
 import PostCard from '../../components/PostCard';
 import { SpaceChatRoomContent } from './SpaceChatRoom';
+import SpaceMembersModal from '../../components/SpaceMembersModal';
 
 const SpaceDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -33,8 +34,122 @@ const SpaceDetail: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isMember, setIsMember] = useState(false);
     const [joinLoading, setJoinLoading] = useState(false);
+    const [showMembersModal, setShowMembersModal] = useState(false);
+
+    // Post Media States
+    const [postMedia, setPostMedia] = useState<File | Blob | null>(null);
+    const [postMediaType, setPostMediaType] = useState<'image' | 'audio' | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+
+    // Refs
+    const postFileInputRef = useRef<HTMLInputElement>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const timerRef = useRef<any>(null);
 
     // Handlers
+    const handlePostMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setPostMedia(file);
+            setPostMediaType('image');
+            setPreviewUrl(URL.createObjectURL(file));
+        }
+    };
+
+    const handleStartRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                setPostMedia(audioBlob);
+                setPostMediaType('audio');
+                setPreviewUrl(URL.createObjectURL(audioBlob));
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+
+            // Timer
+            let seconds = 0;
+            setRecordingDuration(0);
+            timerRef.current = setInterval(() => {
+                seconds++;
+                setRecordingDuration(seconds);
+            }, 1000);
+
+        } catch (error) {
+            console.error("Error accessing microphone:", error);
+            alert("Could not access microphone.");
+        }
+    };
+
+    const handleStopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            if (timerRef.current) clearInterval(timerRef.current);
+        }
+    };
+
+    const handlePostSubmit = async () => {
+        if ((!newPostContent.trim() && !postMedia) || !user) return;
+
+        setUploading(true);
+        try {
+            let mediaUrl = '';
+            let mediaType = null;
+
+            if (postMedia) {
+                const ext = postMediaType === 'audio' ? 'webm' : postMedia instanceof File ? postMedia.name.split('.').pop() : 'jpg';
+                const fileName = `space-post-${Date.now()}.${ext}`;
+                const { error: uploadError } = await supabase.storage.from('VoxSpace_App').upload(fileName, postMedia);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage.from('VoxSpace_App').getPublicUrl(fileName);
+                mediaUrl = data.publicUrl;
+                mediaType = postMediaType;
+            }
+
+            const { error } = await supabase.from('posts').insert({
+                space_id: id,
+                user_id: user.id,
+                content: newPostContent,
+                media: mediaUrl || null,
+                media_type: mediaType
+            });
+
+            if (error) throw error;
+
+            // Reset
+            setNewPostContent('');
+            setPostMedia(null);
+            setPostMediaType(null);
+            setPreviewUrl(null);
+            fetchPosts();
+
+        } catch (error: any) {
+            console.error("Post failed:", error);
+            alert("Failed to post: " + error.message);
+        } finally {
+            setUploading(false);
+        }
+    };
+
+
+
     const handleShare = async () => {
         try {
             await navigator.clipboard.writeText(window.location.href);
@@ -72,6 +187,7 @@ const SpaceDetail: React.FC = () => {
             const formatted: Post[] = data.map((p: any) => ({
                 id: p.id,
                 author: {
+                    id: p.user_id,
                     name: p.profiles?.full_name || 'Unknown',
                     username: p.profiles?.username || 'user',
                     avatar: p.profiles?.avatar_url || '',
@@ -293,10 +409,13 @@ const SpaceDetail: React.FC = () => {
                         )}
 
                         <div className="flex items-center gap-4 text-sm font-medium">
-                            <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setShowMembersModal(true)}
+                                className="flex items-center gap-1 hover:text-gray-200 transition-colors cursor-pointer"
+                            >
                                 <Users size={16} />
                                 <span>{space.members_count || 1} members</span>
-                            </div>
+                            </button>
                         </div>
                     </div>
 
@@ -360,36 +479,94 @@ const SpaceDetail: React.FC = () => {
                                 <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                                     {user?.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} className="w-full h-full object-cover" />}
                                 </div>
-                                <input
-                                    type="text"
-                                    placeholder="Post something to the space..."
-                                    className="flex-1 bg-gray-50 rounded-xl px-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#ff1744]"
-                                    value={newPostContent}
-                                    onChange={(e) => setNewPostContent(e.target.value)}
-                                    onKeyDown={async (e) => {
-                                        if (e.key === 'Enter' && newPostContent.trim()) {
-                                            try {
-                                                const { error } = await supabase.from('posts').insert({
-                                                    space_id: id,
-                                                    user_id: user?.id,
-                                                    content: newPostContent
-                                                });
-                                                if (error) throw error;
-                                                setNewPostContent('');
-                                                fetchPosts(); // Refresh
-                                            } catch (err: any) {
-                                                alert("Failed to post: " + err.message);
-                                            }
-                                        }
-                                    }}
-                                />
-                            </div>
-                            <div className="flex justify-between items-center pl-14">
-                                <div className="flex gap-4 text-gray-400">
-                                    <ImageIcon size={20} className="hover:text-[#ff1744] cursor-pointer" />
-                                    <Mic size={20} className="hover:text-[#ff1744] cursor-pointer" />
+                                <div className="flex-1 space-y-3">
+                                    <input
+                                        type="text"
+                                        placeholder={isRecording ? "Recording audio..." : "Post something to the space..."}
+                                        className="w-full bg-gray-50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#ff1744] outline-none"
+                                        value={newPostContent}
+                                        onChange={(e) => setNewPostContent(e.target.value)}
+                                        disabled={isRecording}
+                                    />
+
+                                    {/* Media Previews */}
+                                    {previewUrl && (
+                                        <div className="relative rounded-xl overflow-hidden bg-gray-100 border border-gray-200 w-fit max-w-full">
+                                            <button
+                                                onClick={() => {
+                                                    setPostMedia(null);
+                                                    setPostMediaType(null);
+                                                    setPreviewUrl(null);
+                                                }}
+                                                className="absolute top-1 right-1 p-1 bg-black/50 hover:bg-black/70 rounded-full text-white z-10"
+                                            >
+                                                <X size={14} />
+                                            </button>
+
+                                            {postMediaType === 'image' ? (
+                                                <img src={previewUrl} className="max-h-48 object-cover" />
+                                            ) : (
+                                                <div className="p-3 flex items-center gap-3 pr-8">
+                                                    <div className="w-8 h-8 rounded-full bg-[#ff1744] flex items-center justify-center text-white">
+                                                        <Mic size={16} />
+                                                    </div>
+                                                    <audio src={previewUrl} controls className="h-8 w-48" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                                <span className="text-xs text-gray-400">Press Enter to post</span>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex justify-between items-center pl-14 pt-1">
+                                <div className="flex gap-4 text-gray-400 items-center">
+                                    {/* Image Upload */}
+                                    <button
+                                        onClick={() => postFileInputRef.current?.click()}
+                                        className="hover:text-[#ff1744] cursor-pointer transition-colors p-1 rounded-full hover:bg-red-50"
+                                        disabled={isRecording || uploading}
+                                    >
+                                        <ImageIcon size={20} />
+                                    </button>
+                                    <input
+                                        type="file"
+                                        ref={postFileInputRef}
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={handlePostMediaSelect}
+                                    />
+
+                                    {/* Audio Recording */}
+                                    {isRecording ? (
+                                        <div className="flex items-center gap-2 text-[#ff1744] animate-pulse">
+                                            <div className="w-2 h-2 bg-[#ff1744] rounded-full" />
+                                            <span className="text-xs font-bold font-mono">
+                                                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                                            </span>
+                                            <button onClick={handleStopRecording} className="ml-2 hover:scale-110 transition-transform">
+                                                <StopCircle size={20} className="fill-current" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={handleStartRecording}
+                                            className="hover:text-[#ff1744] cursor-pointer transition-colors p-1 rounded-full hover:bg-red-50"
+                                            disabled={!!postMedia || uploading}
+                                        >
+                                            <Mic size={20} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={handlePostSubmit}
+                                    disabled={(!newPostContent.trim() && !postMedia) || uploading || isRecording}
+                                    className="px-5 py-1.5 bg-[#ff1744] hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-full transition-all shadow-md active:scale-95 flex items-center gap-2"
+                                >
+                                    {uploading && <Loader2 size={14} className="animate-spin" />}
+                                    Post
+                                </button>
                             </div>
                         </div>
 
@@ -499,6 +676,15 @@ const SpaceDetail: React.FC = () => {
                     </div>
                 )
             }
+
+            {space && (
+                <SpaceMembersModal
+                    isOpen={showMembersModal}
+                    onClose={() => setShowMembersModal(false)}
+                    spaceId={space.id}
+                    isOwner={isOwner}
+                />
+            )}
         </div >
     );
 };

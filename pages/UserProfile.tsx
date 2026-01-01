@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, MessageSquare, Calendar, MapPin, Link as LinkIcon, Loader2 } from 'lucide-react';
 import PostCard from '../components/PostCard';
 import { Post } from '../types';
+import ImageViewer from '../components/ImageViewer';
 
 interface ProfileData {
     id: string;
@@ -27,6 +28,7 @@ const UserProfile: React.FC = () => {
     const [isFollowing, setIsFollowing] = useState(false);
     const [followLoading, setFollowLoading] = useState(false);
     const [messingLoading, setMessagingLoading] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchProfileData = async () => {
@@ -67,6 +69,7 @@ const UserProfile: React.FC = () => {
                 const formattedPosts: Post[] = postsData.map((item: any) => ({
                     id: item.id,
                     author: {
+                        id: data.id,
                         name: data.full_name,
                         username: data.username,
                         avatar: data.avatar_url,
@@ -166,11 +169,17 @@ const UserProfile: React.FC = () => {
 
             <div className="px-4 pb-4 relative">
                 <div className="flex justify-between items-end -mt-10 mb-4">
-                    <img
-                        src={profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.full_name}&background=random`}
-                        alt="Profile"
-                        className="w-20 h-20 rounded-full border-4 border-white object-cover shadow-sm bg-white"
-                    />
+                    <button
+                        onClick={() => profile.avatar_url && setPreviewImage(profile.avatar_url)}
+                        className={`rounded-full ${profile.avatar_url ? 'cursor-pointer' : 'cursor-default'}`}
+                        disabled={!profile.avatar_url}
+                    >
+                        <img
+                            src={profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.full_name}&background=random`}
+                            alt="Profile"
+                            className="w-20 h-20 rounded-full border-4 border-white object-cover shadow-sm bg-white hover:opacity-90 transition-opacity"
+                        />
+                    </button>
                     <div className="flex gap-2">
                         {isOwnProfile ? (
                             <button onClick={() => navigate('/edit-profile')} className="px-4 py-1.5 border border-gray-300 rounded-full font-bold text-sm hover:bg-gray-50">
@@ -230,6 +239,12 @@ const UserProfile: React.FC = () => {
                 {posts.map(post => <PostCard key={post.id} post={post} />)}
                 {posts.length === 0 && <div className="p-8 text-center text-gray-400">No posts yet</div>}
             </div>
+
+            <ImageViewer
+                isOpen={!!previewImage}
+                onClose={() => setPreviewImage(null)}
+                src={previewImage || ''}
+            />
         </div>
     );
 };

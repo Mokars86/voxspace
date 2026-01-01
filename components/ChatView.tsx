@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit, Archive, CheckCheck, Loader2 } from 'lucide-react';
+import { Search, Edit, Archive, CheckCheck, Loader2, Phone, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatPreview } from '../types';
@@ -13,7 +13,38 @@ const ChatView: React.FC = () => {
   const [chats, setChats] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'archived'>('all');
+  const [viewMode, setViewMode] = useState<'chats' | 'calls'>('chats');
+  const [callLogs, setCallLogs] = useState<any[]>([]);
 
+  const fetchCallLogs = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('call_logs')
+        .select(`
+                  *,
+                  caller:caller_id(full_name, avatar_url),
+                  chat:chat_id(is_group, name)
+              `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setCallLogs(data || []);
+    } catch (error) {
+      console.error("Error fetching call logs", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === 'chats') {
+      fetchChats();
+    } else {
+      fetchCallLogs();
+    }
+  }, [user, viewMode]);
   const fetchChats = async () => {
     if (!user) return;
     setLoading(true);
@@ -112,8 +143,8 @@ const ChatView: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchChats();
-  }, [user]);
+    // Initial fetch handled by viewMode effect
+  }, []);
 
   const handleArchive = async (e: React.MouseEvent, chatId: string, currentStatus: boolean) => {
     e.stopPropagation();
@@ -234,28 +265,48 @@ const ChatView: React.FC = () => {
       {/* Header / Search */}
       <div className="p-4 bg-white dark:bg-gray-900 sticky top-0 z-10 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold tracking-tight dark:text-white">Chats</h2>
-
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-full text-sm">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'all' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setActiveTab('requests')}
-              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'requests' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
-            >
-              Requests
-            </button>
-            <button
-              onClick={() => setActiveTab('archived')}
-              className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'archived' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
-            >
-              Archived
-            </button>
+          <div className="flex items-center gap-4">
+            <h2 className="text-2xl font-bold tracking-tight dark:text-white">
+              {viewMode === 'chats' ? 'Chats' : 'Calls'}
+            </h2>
+            <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+              <button
+                onClick={() => setViewMode('chats')}
+                className={cn("p-1.5 rounded-md transition-all", viewMode === 'chats' ? "bg-white dark:bg-gray-700 shadow-sm" : "text-gray-400")}
+              >
+                <CheckCheck size={16} />
+              </button>
+              <button
+                onClick={() => setViewMode('calls')}
+                className={cn("p-1.5 rounded-md transition-all", viewMode === 'calls' ? "bg-white dark:bg-gray-700 shadow-sm" : "text-gray-400")}
+              >
+                <Phone size={16} />
+              </button>
+            </div>
           </div>
+
+          {viewMode === 'chats' && (
+            <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-full text-sm">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'all' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setActiveTab('requests')}
+                className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'requests' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
+              >
+                Requests
+              </button>
+              <button
+                onClick={() => setActiveTab('archived')}
+                className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'archived' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
+              >
+                Archived
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="relative">
@@ -274,6 +325,38 @@ const ChatView: React.FC = () => {
         {loading ? (
           <div className="flex py-12 justify-center">
             <Loader2 className="animate-spin text-gray-300" />
+          </div>
+        ) : viewMode === 'calls' ? (
+          <div className="flex flex-col">
+            {callLogs.length === 0 ? (
+              <div className="text-center py-10 text-gray-400">No recent calls</div>
+            ) : (
+              callLogs.map(log => {
+                const isOutgoing = log.caller_id === user?.id;
+                const isMissed = log.status === 'missed' && !isOutgoing;
+                return (
+                  <div key={log.id} className="flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer border-b border-gray-50 dark:border-gray-800">
+                    <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center mr-4 overflow-hidden">
+                      {log.caller?.avatar_url ? <img src={log.caller.avatar_url} className="w-full h-full object-cover" /> : <Phone size={20} />}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className={cn("font-medium", isMissed ? "text-red-500" : "text-gray-900 dark:text-white")}>
+                        {log.caller?.full_name || 'Unknown'}
+                      </h3>
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        {isOutgoing ? <ArrowUpRight size={14} className="text-green-500" /> : <ArrowDownLeft size={14} className={isMissed ? "text-red-500" : "text-blue-500"} />}
+                        <span>{isOutgoing ? 'Outgoing' : 'Incoming'}</span>
+                        <span>•</span>
+                        <span>{new Date(log.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    <div className="text-gray-400">
+                      <Phone size={20} />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         ) : filteredChats.length > 0 ? (
           filteredChats.map((chat) => (
