@@ -63,9 +63,17 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             localStream.current = stream;
             return stream;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error accessing microphone", error);
-            alert("Could not access microphone.");
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                alert("Microphone permission denied. Please enable it in Settings.");
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                alert("No microphone found on this device.");
+            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                alert("Microphone is already in use by another app.");
+            } else {
+                alert(`Microphone Error: ${error.name} - ${error.message}`);
+            }
             return null;
         }
     };

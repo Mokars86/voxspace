@@ -56,8 +56,22 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 import { LanguageProvider } from './context/LanguageContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { usePushNotifications } from './hooks/usePushNotifications';
 
 const App: React.FC = () => {
+  usePushNotifications();
+
+  React.useEffect(() => {
+    // Request Notification permission on app start to trigger Android 13+ prompt
+    if ("Notification" in window) {
+      Notification.requestPermission().then((permission) => {
+        console.log("Notification permission status:", permission);
+      }).catch(err => {
+        console.error("Error requesting notification permission:", err);
+      });
+    }
+  }, []);
+
   return (
     <LanguageProvider>
       <NotificationProvider>

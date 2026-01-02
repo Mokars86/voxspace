@@ -19,6 +19,8 @@ interface NotificationContextType {
     markAsRead: (id: string) => Promise<void>;
     markAllAsRead: () => Promise<void>;
     loading: boolean;
+    sentMessageSound: string;
+    setSentMessageSound: (sound: string) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -27,12 +29,21 @@ const NotificationContext = createContext<NotificationContextType>({
     markAsRead: async () => { },
     markAllAsRead: async () => { },
     loading: true,
+    sentMessageSound: 'pop',
+    setSentMessageSound: () => { },
 });
 
 export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
     const { user } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
+    const [sentMessageSound, setSentMessageSound] = useState<string>(() => {
+        return localStorage.getItem('sentMessageSound') || 'pop';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('sentMessageSound', sentMessageSound);
+    }, [sentMessageSound]);
 
     const fetchNotifications = async () => {
         if (!user) return;
@@ -113,7 +124,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     };
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, loading }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, loading, sentMessageSound, setSentMessageSound }}>
             {children}
         </NotificationContext.Provider>
     );

@@ -95,10 +95,66 @@ const NotificationSettings: React.FC = () => {
                         label="Marketing"
                         description="Receive news and special offers"
                         checked={preferences.marketing_notifications}
-                        onChange={(v) => updatePreference('marketing_notifications', v)}
+                        onChange={(v: boolean) => updatePreference('marketing_notifications', v)}
                     />
                 </div>
+
+                {/* Sound Settings */}
+                <div className="bg-gray-50 dark:bg-gray-950 p-4 rounded-2xl space-y-4">
+                    <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-2">Message Sounds</h3>
+                    <SoundSelector />
+                </div>
             </div>
+        </div>
+    );
+};
+
+import { useNotifications } from '../../context/NotificationContext';
+import { Volume2 } from 'lucide-react';
+
+const SoundSelector = () => {
+    const { sentMessageSound, setSentMessageSound } = useNotifications();
+
+    const sounds = [
+        { id: 'pop', name: 'Pop' },
+        { id: 'chime', name: 'Chime' },
+        { id: 'level_up', name: 'Level Up' },
+        { id: 'none', name: 'None' },
+    ];
+
+    const playPreview = (soundId: string) => {
+        if (soundId === 'none') return;
+        const audio = new Audio(`/sounds/${soundId}.mp3`);
+        audio.play().catch(e => console.error("Error playing sound", e));
+    };
+
+    return (
+        <div className="space-y-2">
+            {sounds.map((sound) => (
+                <button
+                    key={sound.id}
+                    onClick={() => {
+                        setSentMessageSound(sound.id);
+                        playPreview(sound.id);
+                    }}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${sentMessageSound === sound.id
+                            ? 'bg-white dark:bg-gray-800 border-2 border-[#ff1744] shadow-sm'
+                            : 'bg-white dark:bg-gray-900 border border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${sentMessageSound === sound.id ? 'bg-[#ff1744]/10 text-[#ff1744]' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+                            <Volume2 size={20} />
+                        </div>
+                        <span className={`font-medium ${sentMessageSound === sound.id ? 'text-[#ff1744]' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {sound.name}
+                        </span>
+                    </div>
+                    {sentMessageSound === sound.id && (
+                        <div className="w-4 h-4 rounded-full bg-[#ff1744] shadow-sm" />
+                    )}
+                </button>
+            ))}
         </div>
     );
 };

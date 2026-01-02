@@ -16,6 +16,60 @@ interface Transaction {
    };
 }
 
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
+
+// Initialize Stripe (Replace with your Publishable Key)
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+
+const TopUpForm = ({ onSuccess, onClose }: { onSuccess: () => void, onClose: () => void }) => {
+   const stripe = useStripe();
+   const elements = useElements();
+   const [message, setMessage] = useState<string | null>(null);
+   const [isProcessing, setIsProcessing] = useState(false);
+
+   const handleSubmit = async (e: any) => {
+      e.preventDefault();
+
+      if (!stripe || !elements) return;
+
+      setIsProcessing(true);
+
+      const { error } = await stripe.confirmPayment({
+         elements,
+         confirmParams: {
+            // Return to a success page or handle locally (if redirect is disabled or unused in some flows)
+            // For this demo, we assume we might need a return_url unless redirect: 'if_required' is used
+            return_url: window.location.origin,
+         },
+         redirect: 'if_required'
+      });
+
+      if (error) {
+         setMessage(error.message || "An unexpected error occurred.");
+         setIsProcessing(false);
+      } else {
+         setMessage("Payment Successful!");
+         setIsProcessing(false);
+         onSuccess();
+         setTimeout(onClose, 1500);
+      }
+   };
+
+   return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+         <PaymentElement />
+         {message && <div className="text-red-500 text-sm font-bold">{message}</div>}
+         <button
+            disabled={isProcessing || !stripe || !elements}
+            className="w-full bg-[#ff1744] text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-red-200 active:scale-95 transition-transform disabled:opacity-50"
+         >
+            {isProcessing ? <Loader2 className="animate-spin mx-auto" /> : "Pay Now"}
+         </button>
+      </form>
+   );
+};
+
 const WalletView: React.FC = () => {
    const { user } = useAuth();
    const [balance, setBalance] = useState<number>(0);
@@ -26,12 +80,14 @@ const WalletView: React.FC = () => {
    // Modal States
    const [showTopUp, setShowTopUp] = useState(false);
    const [showSend, setShowSend] = useState(false);
+   const [clientSecret, setClientSecret] = useState('');
 
    // Form States
    const [amount, setAmount] = useState('');
    const [recipientUsername, setRecipientUsername] = useState('');
    const [processing, setProcessing] = useState(false);
 
+   // ... (fetchWalletData remains same) ...
    useEffect(() => {
       if (user) fetchWalletData();
    }, [user]);
@@ -72,49 +128,27 @@ const WalletView: React.FC = () => {
       }
    };
 
-   const handleTopUp = async () => {
-      if (!amount || isNaN(parseFloat(amount)) || !walletId) return;
+   // Prepare Payment Intent
+   const initializePayment = async () => {
+      if (!amount || isNaN(parseFloat(amount))) return;
       setProcessing(true);
-      const val = parseFloat(amount);
-
       try {
-         // 1. Update Balance
-         const newBalance = balance + val;
-         const { error: balError } = await supabase
-            .from('wallets')
-            .update({ balance: newBalance })
-            .eq('id', walletId);
+         const { data, error } = await supabase.functions.invoke('payment-sheet', {
+            body: { amount: parseFloat(amount), metadata: { user_id: user?.id } }
+         });
 
-         if (balError) throw balError;
-
-         // 2. Record Transaction
-         const { error: txError } = await supabase
-            .from('transactions')
-            .insert({
-               wallet_id: walletId,
-               amount: val,
-               type: 'deposit',
-               description: 'Top Up'
-            });
-
-         if (txError) throw txError;
-
-         setBalance(newBalance);
-         setShowTopUp(false);
-         setAmount('');
-         fetchWalletData(); // Refresh history
-         alert("Top Up Successful!");
-
-      } catch (error: any) {
-         console.error("Top Up Failed:", error);
-         alert("Failed: " + error.message);
+         if (error) throw error;
+         setClientSecret(data.clientSecret);
+      } catch (err: any) {
+         console.error("Payment setup failed", err);
+         alert("Failed to setup payment");
       } finally {
          setProcessing(false);
       }
    };
 
    const handleSendMoney = async () => {
-      if (!amount || !recipientUsername || !walletId || !user) return;
+      if (!amount || !recipientUsername || !user) return;
       setProcessing(true);
       const val = parseFloat(amount);
 
@@ -125,68 +159,25 @@ const WalletView: React.FC = () => {
       }
 
       try {
-         // 1. Find Recipient
-         const { data: recipient, error: userError } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .eq('username', recipientUsername)
-            .single();
-
-         if (userError || !recipient) {
-            alert("User not found");
-            setProcessing(false);
-            return;
-         }
-
-         if (recipient.id === user.id) {
-            alert("Cannot send money to yourself");
-            setProcessing(false);
-            return;
-         }
-
-         // 2. Get Recipient Wallet
-         const { data: recipientWallet } = await supabase
-            .from('wallets')
-            .select('id, balance')
-            .eq('user_id', recipient.id)
-            .single();
-
-         if (!recipientWallet) {
-            // Should exist but handle case
-            alert("Recipient wallet not active");
-            setProcessing(false);
-            return;
-         }
-
-         // 3. Perform Transfer (Ideally invalidates RLS if client-side, but simulating logic)
-         // Deduct from Sender
-         await supabase.from('wallets').update({ balance: balance - val }).eq('id', walletId);
-         // Add to Recipient
-         await supabase.from('wallets').update({ balance: recipientWallet.balance + val }).eq('id', recipientWallet.id);
-
-         // 4. Record Transactions (Sender)
-         await supabase.from('transactions').insert({
-            wallet_id: walletId,
-            amount: val,
-            type: 'transfer_out',
-            description: `Sent to @${recipientUsername}`,
-            related_user_id: recipient.id
+         // Call Secure RPC
+         const { data, error } = await supabase.rpc('transfer_funds', {
+            recipient_username: recipientUsername,
+            amount: val
          });
 
-         // 5. Record Transactions (Recipient)
-         await supabase.from('transactions').insert({
-            wallet_id: recipientWallet.id,
-            amount: val,
-            type: 'transfer_in',
-            description: `Received from @${user.email?.split('@')[0] || 'user'}`, // fallback
-            related_user_id: user.id
-         });
+         if (error) throw error;
 
-         setBalance(prev => prev - val);
+         // Check RPC response
+         if (!data || !data.success) {
+            throw new Error(data?.message || "Transfer failed");
+         }
+
+         // Update Local State on Success
+         setBalance(data.new_balance);
          setShowSend(false);
          setAmount('');
          setRecipientUsername('');
-         fetchWalletData();
+         fetchWalletData(); // Refresh transactions
          alert("Transfer Successful!");
 
       } catch (error: any) {
@@ -199,7 +190,7 @@ const WalletView: React.FC = () => {
 
    return (
       <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950 relative">
-         {/* Header Card */}
+         {/* ... (Header Card and Transactions UI remains the same) ... */}
          <div className="p-6 bg-white dark:bg-gray-900 pb-8 rounded-b-[2rem] shadow-sm z-10 transition-colors">
             <h2 className="text-2xl font-bold mb-6 text-center dark:text-white">Wallet</h2>
 
@@ -260,37 +251,50 @@ const WalletView: React.FC = () => {
             </div>
          </div>
 
-         {/* Top Up Modal */}
+
+         {/* Top Up Modal with Stripe */}
          {showTopUp && (
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-in fade-in">
                <div className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom">
                   <div className="flex justify-between items-center mb-6">
                      <h3 className="text-xl font-bold">Top Up Wallet</h3>
-                     <button onClick={() => setShowTopUp(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+                     <button onClick={() => { setShowTopUp(false); setClientSecret(''); setAmount(''); }} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
                   </div>
-                  <div className="space-y-4">
-                     <div>
-                        <label className="text-sm font-bold text-gray-600">Amount ($)</label>
-                        <input
-                           type="number"
-                           value={amount}
-                           onChange={e => setAmount(e.target.value)}
-                           className="w-full text-3xl font-bold p-4 bg-gray-50 rounded-xl border-none focus:ring-2 ring-[#ff1744] outline-none text-center"
-                           placeholder="0.00"
-                           autoFocus
-                        />
+
+                  {!clientSecret ? (
+                     <div className="space-y-4">
+                        <div>
+                           <label className="text-sm font-bold text-gray-600">Amount ($)</label>
+                           <input
+                              type="number"
+                              value={amount}
+                              onChange={e => setAmount(e.target.value)}
+                              className="w-full text-3xl font-bold p-4 bg-gray-50 rounded-xl border-none focus:ring-2 ring-[#ff1744] outline-none text-center"
+                              placeholder="0.00"
+                              autoFocus
+                           />
+                        </div>
+                        <button
+                           onClick={initializePayment}
+                           disabled={processing || !amount}
+                           className="w-full bg-[#ff1744] text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-red-200 active:scale-95 transition-transform disabled:opacity-50"
+                        >
+                           {processing ? <Loader2 className="animate-spin mx-auto" /> : 'Continue to Payment'}
+                        </button>
                      </div>
-                     <button
-                        onClick={handleTopUp}
-                        disabled={processing || !amount}
-                        className="w-full bg-[#ff1744] text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-red-200 active:scale-95 transition-transform disabled:opacity-50"
-                     >
-                        {processing ? <Loader2 className="animate-spin mx-auto" /> : 'Confirm Payment'}
-                     </button>
-                  </div>
+                  ) : (
+                     <Elements stripe={stripePromise} options={{ clientSecret }}>
+                        <TopUpForm onSuccess={() => {
+                           fetchWalletData();
+                           setClientSecret('');
+                           setAmount('');
+                        }} onClose={() => setShowTopUp(false)} />
+                     </Elements>
+                  )}
                </div>
             </div>
          )}
+
 
          {/* Send Money Modal */}
          {showSend && (

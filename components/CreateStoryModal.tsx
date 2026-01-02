@@ -250,47 +250,51 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onSuccess 
                             autoFocus
                         />
 
-                        <div className="flex justify-between items-center mt-4">
-                            <div className="flex gap-2">
+                        <div className="flex flex-col gap-4 mt-auto w-full">
+                            <div className="flex justify-center gap-2 flex-wrap">
                                 {colors.map(c => (
                                     <button
                                         key={c}
                                         onClick={() => setBackgroundColor(c)}
-                                        className={`w-6 h-6 rounded-full bg-gradient-to-br ${c} border-2 ${backgroundColor === c ? 'border-white' : 'border-transparent'}`}
+                                        className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} border-2 ${backgroundColor === c ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-80'} transition-all`}
                                     />
                                 ))}
                             </div>
 
-                            <select
-                                value={privacy}
-                                onChange={(e) => setPrivacy(e.target.value as any)}
-                                className="bg-black/20 text-white border-none rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-white/50"
-                            >
-                                <option value="public">Public</option>
-                                <option value="followers">Followers</option>
-                                <option value="only_me">Only Me</option>
-                            </select>
+                            <div className="flex items-center justify-between w-full gap-2">
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={privacy}
+                                        onChange={(e) => setPrivacy(e.target.value as any)}
+                                        className="bg-black/20 text-white border-none rounded-lg px-2 py-2 text-xs outline-none focus:ring-1 focus:ring-white/50"
+                                    >
+                                        <option value="public" className="text-black">Public</option>
+                                        <option value="followers" className="text-black">Followers</option>
+                                        <option value="only_me" className="text-black">Only Me</option>
+                                    </select>
 
-                            <div className="flex items-center gap-1 bg-black/20 rounded-lg px-2 py-1">
-                                <Clock size={12} className="text-white" />
-                                <select
-                                    value={duration}
-                                    onChange={(e) => setDuration(Number(e.target.value) as any)}
-                                    className="bg-transparent text-white border-none text-xs outline-none cursor-pointer"
+                                    <div className="flex items-center gap-1 bg-black/20 rounded-lg px-2 py-2">
+                                        <Clock size={14} className="text-white" />
+                                        <select
+                                            value={duration}
+                                            onChange={(e) => setDuration(Number(e.target.value) as any)}
+                                            className="bg-transparent text-white border-none text-xs outline-none cursor-pointer"
+                                        >
+                                            <option value={12} className="text-black">12h</option>
+                                            <option value={24} className="text-black">24h</option>
+                                            <option value={48} className="text-black">48h</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleTextPost}
+                                    disabled={!text.trim() || loading}
+                                    className="p-3 bg-white text-black rounded-full shadow-lg disabled:opacity-50 hover:bg-gray-100 transition-colors"
                                 >
-                                    <option value={12} className="text-black">12h</option>
-                                    <option value={24} className="text-black">24h</option>
-                                    <option value={48} className="text-black">48h</option>
-                                </select>
+                                    {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                                </button>
                             </div>
-
-                            <button
-                                onClick={handleTextPost}
-                                disabled={!text.trim() || loading}
-                                className="p-3 bg-white text-black rounded-full shadow-lg disabled:opacity-50"
-                            >
-                                {loading ? <Loader2 className="animate-spin" /> : <Send size={20} />}
-                            </button>
                         </div>
                     </div>
                 )}

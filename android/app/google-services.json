@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "555568638240",
+    "project_id": "voxspace-87dee",
+    "storage_bucket": "voxspace-87dee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:555568638240:android:ac510bb471fc4149310f45",
+        "android_client_info": {
+          "package_name": "com.voxspace.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCF1qW5o5TEjxbe0k5vdmhqVAsUfnUYZP4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

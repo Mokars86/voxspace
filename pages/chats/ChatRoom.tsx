@@ -10,7 +10,9 @@ import MessageBubble, { ChatMessage } from '../../components/chat/MessageBubble'
 import ChatInput from '../../components/chat/ChatInput';
 import ForwardModal from '../../components/chat/ForwardModal';
 import CallOverlay from '../../components/chat/CallOverlay';
+
 import { useWebRTC } from '../../hooks/useWebRTC';
+import { useNotifications } from '../../context/NotificationContext';
 
 interface Message extends ChatMessage { }
 
@@ -72,7 +74,9 @@ const ChatRoom: React.FC = () => {
     const typingTimeoutRef = useRef<any>(null);
     const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+
     const { callState, callerInfo, isMuted, startCall, answerCall, endCall, handleSignal, toggleMute } = useWebRTC(user, chatId);
+    const { sentMessageSound } = useNotifications();
 
     useEffect(() => {
         listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -314,6 +318,11 @@ const ChatRoom: React.FC = () => {
                 await channelRef.current.track({ user_id: user.id, full_name: user.user_metadata?.full_name, typing: false });
             }
 
+            // Play Sound
+            if (sentMessageSound && sentMessageSound !== 'none') {
+                const audio = new Audio(`/sounds/${sentMessageSound}.mp3`);
+                audio.play().catch(e => console.error("Error playing sent sound", e));
+            }
         } catch (error) {
             console.error("Failed to send message", error);
         }
