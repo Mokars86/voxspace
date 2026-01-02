@@ -5,6 +5,7 @@ import Welcome from './pages/auth/Welcome';
 import Login from './pages/auth/Login';
 import MainApp from './pages/MainApp';
 import { Loader2 } from 'lucide-react';
+import { SplashScreen } from '@capacitor/splash-screen'; // Import Splash Screen
 
 import Onboarding from './pages/auth/Onboarding';
 import ChatRoom from './pages/chats/ChatRoom';
@@ -60,6 +61,15 @@ import { usePushNotifications } from './hooks/usePushNotifications';
 
 const App: React.FC = () => {
   usePushNotifications();
+
+
+  React.useEffect(() => {
+    // Hide splash screen after app mounts
+    const hideSplash = async () => {
+      await SplashScreen.hide();
+    };
+    hideSplash();
+  }, []);
 
   React.useEffect(() => {
     // Request Notification permission on app start to trigger Android 13+ prompt

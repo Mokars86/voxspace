@@ -2,9 +2,12 @@ import { useEffect } from 'react';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export const usePushNotifications = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
 
     useEffect(() => {
         if (!Capacitor.isNativePlatform()) {
@@ -29,9 +32,17 @@ export const usePushNotifications = () => {
         const addListeners = async () => {
             await PushNotifications.removeAllListeners();
 
-            await PushNotifications.addListener('registration', token => {
+            await PushNotifications.addListener('registration', async token => {
                 console.log('Push registration success, token: ' + token.value);
-                // Optionally send token to your backend here
+                if (user) {
+                    const { error } = await supabase
+                        .from('profiles')
+                        .update({ fcm_token: token.value })
+                        .eq('id', user.id);
+
+                    if (error) console.error("Error saving FCM token:", error);
+                    else console.log("FCM Token saved to profile");
+                }
             });
 
             await PushNotifications.addListener('registrationError', err => {
@@ -60,5 +71,5 @@ export const usePushNotifications = () => {
             }
         };
 
-    }, [navigate]);
+    }, [navigate, user]);
 };

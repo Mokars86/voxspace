@@ -9,7 +9,7 @@ interface CreateModalProps {
 }
 
 const CreateModal: React.FC<CreateModalProps> = ({ onClose }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [content, setContent] = useState('');
   const [topic, setTopic] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -108,7 +108,7 @@ const CreateModal: React.FC<CreateModalProps> = ({ onClose }) => {
       {/* Editor Area */}
       <div className="flex-1 p-4 flex flex-col overflow-y-auto">
         <div className="flex items-start gap-4">
-          <img src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/me/200"} className="w-10 h-10 rounded-full" alt="Profile" />
+          <img src={profile?.avatar_url || user?.user_metadata?.avatar_url || "https://picsum.photos/seed/me/200"} className="w-10 h-10 rounded-full object-cover" alt="Profile" />
           <div className="flex-1">
             <textarea
               autoFocus

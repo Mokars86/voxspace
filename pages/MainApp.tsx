@@ -6,7 +6,6 @@ import {
     Search,
     User,
     Plus,
-    Wallet,
     Bell,
     X,
     Zap
@@ -17,7 +16,6 @@ import ChatView from '../components/ChatView';
 import SpacesView from '../components/SpacesView';
 import DiscoverView from '../components/DiscoverView';
 import ProfileView from '../components/ProfileView';
-import WalletView from '../components/WalletView';
 import CreateModal from '../components/CreateModal';
 import { useLanguage } from '../context/LanguageContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -38,7 +36,7 @@ const MainApp: React.FC = () => {
             case 'spaces': return <SpacesView />;
             case 'discover': return <DiscoverView />;
             case 'profile': return <ProfileView />;
-            case 'wallet': return <WalletView />;
+
             default: return <FeedView />;
         }
     };
@@ -64,9 +62,7 @@ const MainApp: React.FC = () => {
                     <NavButtonDesktop active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User size={24} />} label={t('nav.profile')} />
                 </div>
 
-                <div className="px-4">
-                    <NavButtonDesktop active={activeTab === 'wallet'} onClick={() => setActiveTab('wallet')} icon={<Wallet size={24} />} label={t('nav.wallet')} />
-                </div>
+
             </aside>
 
             {/* Main Content Area */}
@@ -82,12 +78,7 @@ const MainApp: React.FC = () => {
                         </h1>
                     </div>
                     <div className="flex items-center space-x-4">
-                        <button
-                            onClick={() => setActiveTab('wallet')}
-                            className={`p-1.5 rounded-full transition-colors ${activeTab === 'wallet' ? 'bg-red-50 dark:bg-red-900/20 text-[#ff1744]' : 'text-gray-600 dark:text-gray-400'}`}
-                        >
-                            <Wallet size={22} />
-                        </button>
+
                         <button
                             onClick={() => setShowNotifications(true)}
                             className="p-1.5 rounded-full text-gray-600 dark:text-gray-400 relative"

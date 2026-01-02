@@ -146,6 +146,7 @@ const ChatRoom: React.FC = () => {
                         (payload) => handleNewMessage(payload.new)
                     )
                     .on('broadcast', { event: 'signal' }, (payload) => handleSignal(payload.payload))
+                    .on('broadcast', { event: 'new_message' }, (payload) => handleNewMessage(payload.payload))
                     .on('presence', { event: 'sync' }, () => {
                         const state = channel.presenceState();
                         const typing = new Set<string>();
@@ -187,21 +188,25 @@ const ChatRoom: React.FC = () => {
     const handleNewMessage = (newMsgRaw: any) => {
         if (newMsgRaw.sender_id === user?.id) return; // handled locally
 
-        const incomingMsg: Message = {
-            id: newMsgRaw.id,
-            text: newMsgRaw.content,
-            sender: 'them',
-            time: safeDate(newMsgRaw.created_at),
-            type: newMsgRaw.type || 'text',
-            status: 'read',
-            mediaUrl: newMsgRaw.media_url,
-            metadata: newMsgRaw.metadata,
-            replyTo: newMsgRaw.reply_to_id ? getLastMessage(newMsgRaw.reply_to_id) : undefined
-        };
-        if (newMsgRaw.type === 'buzz') {
-            triggerBuzz();
-        }
-        setMessages(prev => [...prev, incomingMsg]);
+        setMessages(prev => {
+            if (prev.some(m => m.id === newMsgRaw.id)) return prev;
+
+            const incomingMsg: Message = {
+                id: newMsgRaw.id,
+                text: newMsgRaw.content,
+                sender: 'them',
+                time: safeDate(newMsgRaw.created_at),
+                type: newMsgRaw.type || 'text',
+                status: 'read',
+                mediaUrl: newMsgRaw.media_url,
+                metadata: newMsgRaw.metadata,
+                replyTo: newMsgRaw.reply_to_id ? getLastMessage(newMsgRaw.reply_to_id) : undefined
+            };
+            if (newMsgRaw.type === 'buzz') {
+                triggerBuzz();
+            }
+            return [...prev, incomingMsg];
+        });
     };
 
     const triggerBuzz = () => {
@@ -285,8 +290,10 @@ const ChatRoom: React.FC = () => {
         const finalMetadata = { ...metadata };
         if (duration) finalMetadata.duration = duration;
 
+        const messageId = crypto.randomUUID();
+
         const optimisticMsg: Message = {
-            id: Date.now().toString(),
+            id: messageId,
             text: content,
             sender: 'me',
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -300,8 +307,28 @@ const ChatRoom: React.FC = () => {
         setMessages([...messages, optimisticMsg]);
         setReplyTo(null); // Clear reply context
 
+        // Broadcast immediately for speed
+        if (channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'new_message',
+                payload: {
+                    id: messageId,
+                    chat_id: chatId,
+                    sender_id: user.id,
+                    content: content,
+                    type: type,
+                    media_url: mediaUrl,
+                    metadata: finalMetadata,
+                    reply_to_id: replyTo?.id,
+                    created_at: new Date().toISOString()
+                }
+            });
+        }
+
         try {
             const { error } = await supabase.from('messages').insert({
+                id: messageId,
                 chat_id: chatId,
                 sender_id: user.id,
                 content: content,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PenLine, Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react';
+import { PenLine, Image as ImageIcon, Sparkles, Loader2, X } from 'lucide-react';
 import PostCard from './PostCard';
 import StoryBar from './StoryBar';
 import { Post } from '../types';
@@ -9,12 +9,17 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
 const FeedView: React.FC = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
   const [posts, setPosts] = useState<Post[]>([]);
   const [followedUsers, setFollowedUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newPostContent, setNewPostContent] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -115,6 +120,69 @@ const FeedView: React.FC = () => {
     }
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedImage(file);
+      const url = URL.createObjectURL(file);
+      setImagePreview(url);
+    }
+  };
+
+  const removeImage = () => {
+    setSelectedImage(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCreatePost = async () => {
+    if ((!newPostContent.trim() && !selectedImage) || !user) return;
+    setIsPosting(true);
+    try {
+      let mediaUrl = null;
+
+      // Upload Image
+      if (selectedImage) {
+        const fileExt = selectedImage.name.split('.').pop();
+        const fileName = `${user.id}/${Math.random()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('post_media')
+          .upload(fileName, selectedImage);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('post_media')
+          .getPublicUrl(fileName);
+
+        mediaUrl = publicUrl;
+      }
+
+      const { error } = await supabase.from('posts').insert({
+        user_id: user.id,
+        content: newPostContent.trim(),
+        media_url: mediaUrl,
+        media_type: mediaUrl ? 'image' : undefined
+      });
+
+      if (error) throw error;
+
+      setNewPostContent('');
+      removeImage();
+
+      // Refresh manually as fallback
+      fetchPosts();
+
+    } catch (error) {
+      console.error("Error creating post:", error);
+      alert("Failed to post. Please try again.");
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
   const handleDeletePost = (id: string) => {
     setPosts(prev => prev.filter(p => p.id !== id));
   };
@@ -196,17 +264,68 @@ const FeedView: React.FC = () => {
       {/* Quick Create (Mini) - Only on For You */}
       {activeTab === 'foryou' && (
         <div className="p-4 flex gap-3 border-b border-gray-50 dark:border-gray-800">
-          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+          <img
+            src={profile?.avatar_url || user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.full_name || user?.user_metadata?.full_name || 'User'}&background=random`}
+            alt="Profile"
+            className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+          />
           <div className="flex-1">
-            <input
-              type="text"
-              placeholder={t('feed.placeholder')}
-              className="w-full py-2 bg-transparent outline-none text-lg placeholder:text-gray-500 dark:text-white dark:placeholder:text-gray-400"
-            />
-            <div className="flex items-center gap-4 mt-2 text-[#ff1744]">
-              <ImageIcon size={20} />
-              <Sparkles size={20} />
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder={t('feed.placeholder')}
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleCreatePost();
+                  }
+                }}
+                disabled={isPosting}
+                className="w-full py-2 bg-transparent outline-none text-lg placeholder:text-gray-500 dark:text-white dark:placeholder:text-gray-400"
+              />
+              {newPostContent.trim() && (
+                <button
+                  onClick={handleCreatePost}
+                  disabled={isPosting}
+                  className="bg-[#ff1744] text-white px-4 py-1 rounded-full text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+                >
+                  {isPosting ? <Loader2 size={16} className="animate-spin" /> : 'Post'}
+                </button>
+              )}
             </div>
+
+            {imagePreview && (
+              <div className="relative mt-2 rounded-2xl overflow-hidden group w-fit">
+                <img src={imagePreview} alt="Preview" className="max-h-[200px] object-cover rounded-xl" />
+                <button
+                  onClick={removeImage}
+                  className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-4 mt-2 text-[#ff1744]">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded-full transition-colors"
+                title="Add Image"
+              >
+                <ImageIcon size={20} />
+              </button>
+              <button className="hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded-full transition-colors"><Sparkles size={20} /></button>
+            </div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageSelect}
+              accept="image/*"
+              className="hidden"
+            />
           </div>
         </div>
       )}
