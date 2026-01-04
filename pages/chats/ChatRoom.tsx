@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-    ArrowLeft, Phone, Video, MoreVertical, Loader2, Clock
+    ArrowLeft, Phone, Video, MoreVertical, Loader2, Clock, Trash2
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../services/supabase';
 import MessageBubble, { ChatMessage } from '../../components/chat/MessageBubble';
 import ChatInput from '../../components/chat/ChatInput';
@@ -16,9 +17,18 @@ import { useNotifications } from '../../context/NotificationContext';
 
 interface Message extends ChatMessage { }
 
-// Error Boundary Component
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-    state = { hasError: false, error: null };
+interface ErrorBoundaryProps {
+    children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+    hasError: boolean;
+    error: any;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    public state: ErrorBoundaryState = { hasError: false, error: null };
+
 
     static getDerivedStateFromError(error: any) {
         return { hasError: true, error };
@@ -73,14 +83,36 @@ const ChatRoom: React.FC = () => {
     const [isBuzzing, setIsBuzzing] = useState(false);
     const typingTimeoutRef = useRef<any>(null);
     const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [previewMedia, setPreviewMedia] = useState<{ url: string, type: 'image' | 'video' } | null>(null);
+    const [disappearingDuration, setDisappearingDuration] = useState(0); // in minutes
 
-    const { callState, callerInfo, isMuted, startCall, answerCall, endCall, handleSignal, toggleMute } = useWebRTC(user, chatId);
+    const {
+        callState,
+        callerInfo,
+        isMuted,
+        isVideoEnabled,
+        isVideoCall,
+        localStream,
+        remoteStream,
+        startCall,
+        answerCall,
+        endCall,
+        handleSignal,
+        toggleMute,
+        toggleVideo
+    } = useWebRTC(user, chatId);
     const { sentMessageSound } = useNotifications();
 
-    useEffect(() => {
-        listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-    }, [messages.length]);
+    // Use useLayoutEffect for smoother initial scroll preventing flash
+    React.useLayoutEffect(() => {
+        if (listRef.current) {
+            // If it's the first load (or very big change), we might want immediate scroll
+            // For now, keeping smooth for new messages, but we could detect "initial load" logic more robustly if needed.
+            // Actually for "opening the chat", instant is better.
+            const isInitialLoad = messages.length > 0 && loading;
+            listRef.current.scrollTop = listRef.current.scrollHeight;
+        }
+    }, [messages, loading]);
 
     useEffect(() => {
         if (!user || !chatId) {
@@ -94,7 +126,7 @@ const ChatRoom: React.FC = () => {
                 // Fetch Chat Info
                 const { data: chatData, error: chatError } = await supabase
                     .from('chats')
-                    .select('name, is_group')
+                    .select('name, is_group, disappearing_duration')
                     .eq('id', chatId)
                     .single();
 
@@ -113,7 +145,13 @@ const ChatRoom: React.FC = () => {
                 if (chatData.is_group) {
                     setChatName(chatData.name);
                     // Group logic simplified/removed for now
-                } else {
+                }
+
+                if (chatData.disappearing_duration) {
+                    setDisappearingDuration(chatData.disappearing_duration);
+                }
+
+                else {
                     const { data: participants } = await supabase
                         .from('chat_participants')
                         .select('user_id, profiles(full_name, avatar_url)')
@@ -188,6 +226,9 @@ const ChatRoom: React.FC = () => {
     const handleNewMessage = (newMsgRaw: any) => {
         if (newMsgRaw.sender_id === user?.id) return; // handled locally
 
+        // Check expiration
+        if (newMsgRaw.expires_at && new Date(newMsgRaw.expires_at) < new Date()) return;
+
         setMessages(prev => {
             if (prev.some(m => m.id === newMsgRaw.id)) return prev;
 
@@ -200,6 +241,9 @@ const ChatRoom: React.FC = () => {
                 status: 'read',
                 mediaUrl: newMsgRaw.media_url,
                 metadata: newMsgRaw.metadata,
+                expiresAt: newMsgRaw.expires_at,
+                viewOnce: newMsgRaw.view_once,
+                isViewed: newMsgRaw.is_viewed,
                 replyTo: newMsgRaw.reply_to_id ? getLastMessage(newMsgRaw.reply_to_id) : undefined
             };
             if (newMsgRaw.type === 'buzz') {
@@ -255,7 +299,10 @@ const ChatRoom: React.FC = () => {
                     mediaUrl: m.media_url,
                     metadata: m.metadata,
                     reactions: reactions,
-                    isDeleted: m.is_deleted
+                    isDeleted: m.is_deleted,
+                    expiresAt: m.expires_at,
+                    viewOnce: m.view_once,
+                    isViewed: m.is_viewed
                 };
             });
             setMessages(formatted);
@@ -290,6 +337,12 @@ const ChatRoom: React.FC = () => {
         const finalMetadata = { ...metadata };
         if (duration) finalMetadata.duration = duration;
 
+        // Disappearing Messages
+        let expiresAt = null;
+        if (disappearingDuration > 0) {
+            expiresAt = new Date(Date.now() + disappearingDuration * 60 * 1000).toISOString();
+        }
+
         const messageId = crypto.randomUUID();
 
         const optimisticMsg: Message = {
@@ -301,6 +354,7 @@ const ChatRoom: React.FC = () => {
             status: 'sent',
             mediaUrl: mediaUrl,
             metadata: finalMetadata,
+            expiresAt: expiresAt || undefined,
             replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, sender: replyTo.sender } : undefined
         };
 
@@ -320,6 +374,8 @@ const ChatRoom: React.FC = () => {
                     type: type,
                     media_url: mediaUrl,
                     metadata: finalMetadata,
+                    expires_at: expiresAt,
+                    view_once: finalMetadata.viewOnce, // Will be set in next step
                     reply_to_id: replyTo?.id,
                     created_at: new Date().toISOString()
                 }
@@ -335,6 +391,8 @@ const ChatRoom: React.FC = () => {
                 type: type,
                 media_url: mediaUrl,
                 metadata: finalMetadata,
+                expires_at: expiresAt,
+                view_once: finalMetadata.viewOnce,
                 reply_to_id: replyTo?.id
             });
 
@@ -350,8 +408,9 @@ const ChatRoom: React.FC = () => {
                 const audio = new Audio(`/sounds/${sentMessageSound}.mp3`);
                 audio.play().catch(e => console.error("Error playing sent sound", e));
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to send message", error);
+            alert(`Message failed to send: ${error?.message || 'Unknown error'}`);
         }
     };
 
@@ -430,9 +489,50 @@ const ChatRoom: React.FC = () => {
         }, 3000);
     };
 
+    // Theme Context
+    // const { colorTheme, setColorTheme } = useTheme();
+    const [showMenu, setShowMenu] = useState(false);
+    // const [showThemePicker, setShowThemePicker] = useState(false);
+
+    const handleViewOnce = async (msg: Message) => {
+        if (!msg.mediaUrl) return;
+
+        // Mark as viewed immediately
+        if (!msg.isViewed && msg.sender !== 'me') {
+            // Optimistic update
+            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isViewed: true } : m));
+
+            await supabase.from('messages').update({ is_viewed: true, metadata: { ...msg.metadata, is_viewed: true } }).eq('id', msg.id);
+        }
+
+        // Open Preview
+        setPreviewMedia({
+            url: msg.mediaUrl,
+            type: msg.type === 'video' ? 'video' : 'image'
+        });
+    };
+
+    const handleClearChat = async () => {
+        if (!confirm("Are you sure you want to clear this chat? This will remove all messages for everyone (prototype behavior).")) return;
+
+        try {
+            // Simplified: utilizing existing 'is_deleted' flag or deleting rows
+            // For a prototype, we'll mark all fetched messages as deleted
+            const promises = messages.map(m =>
+                supabase.from('messages').update({ is_deleted: true }).eq('id', m.id)
+            );
+            await Promise.all(promises);
+            setMessages([]); // clear locally
+            setShowMenu(false);
+        } catch (e) {
+            console.error("Clear chat failed", e);
+            alert("Failed to clear chat");
+        }
+    };
+
     return (
         <ErrorBoundary>
-            <div className={cn("flex flex-col h-[100dvh] w-full bg-[#f0f2f5] transition-transform fixed inset-0 overflow-hidden", isBuzzing && "animate-[spin_0.5s_ease-in-out]")}>
+            <div className={cn("flex flex-col h-[100dvh] w-full max-w-full bg-[#f0f2f5] dark:bg-black transition-transform fixed inset-0 overflow-hidden", isBuzzing && "animate-[spin_0.5s_ease-in-out]")}>
                 <style>{`
                 @keyframes shake {
                     0% { transform: translate(1px, 1px) rotate(0deg); }
@@ -448,54 +548,86 @@ const ChatRoom: React.FC = () => {
                     100% { transform: translate(1px, -2px) rotate(-1deg); }
                 }
             `}</style>
-                <div className={cn("flex flex-col h-full", isBuzzing && "animate-[shake_0.5s_ease-in-out_infinite]")}>
+                <div className={cn("flex flex-col h-full bg-inherit", isBuzzing && "animate-[shake_0.5s_ease-in-out_infinite]")}>
                     {/* Header */}
-                    <header className="px-4 py-3 bg-white flex items-center justify-between shadow-sm z-10">
+                    <header className="px-4 py-3 bg-white dark:bg-gray-900 flex items-center justify-between shadow-sm z-50 border-b border-gray-100 dark:border-gray-800 absolute top-0 w-full">
                         <div className="flex items-center gap-3">
-                            <button onClick={() => navigate(-1)} className="text-gray-600">
-                                <ArrowLeft size={24} />
+                            <button onClick={() => navigate(-1)} className="hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-full transition-colors">
+                                <ArrowLeft size={24} className="text-gray-900 dark:text-gray-100" />
                             </button>
                             <div className="flex items-center gap-3">
                                 <div
-                                    className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500 overflow-hidden cursor-pointer"
+                                    className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center font-bold text-gray-500 dark:text-gray-300 overflow-hidden cursor-pointer"
                                     onClick={() => otherUserId && navigate(`/user/${otherUserId}`)}
                                 >
                                     {chatAvatar ? <img src={chatAvatar} className="w-full h-full object-cover" alt="avatar" /> : chatName[0]}
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-gray-900 leading-tight">{chatName}</h3>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-bold text-gray-900 dark:text-gray-100 leading-tight truncate">{chatName}</h3>
                                     <p className="text-xs text-green-500 font-medium">Online</p>
                                 </div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-4 text-[#ff1744]">
-                            <Video size={24} />
-                            <button onClick={startCall} className="hover:text-red-600 transition-colors">
-                                <Phone size={22} />
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => startCall(true)} className="hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-full transition-colors">
+                                <Video size={24} className="text-[#ff1744]" />
                             </button>
-                            <button
-                                onClick={() => {
-                                    const duration = prompt("Set disappearing messages (minutes)? Enter 0 to disable.");
-                                    if (duration !== null) {
-                                        // In real app, update 'chats' table
-                                        alert(`Disappearing messages set to ${duration} minutes (Visual only for now).`);
-                                    }
-                                }}
-                                className="p-1 rounded-full hover:bg-gray-100"
-                            >
-                                <Clock size={22} className="text-gray-500" />
+                            <button onClick={() => startCall(false)} className="hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-full transition-colors">
+                                <Phone size={22} className="text-[#ff1744]" />
                             </button>
-                            <button className="p-1 rounded-full hover:bg-gray-100"><MoreVertical size={24} className="text-gray-500" /></button>
+
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowMenu(!showMenu)}
+                                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                >
+                                    <MoreVertical size={24} className="text-gray-900 dark:text-gray-100" />
+                                </button>
+
+                                {showMenu && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                                        <div className="absolute top-10 right-0 z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl w-64 border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in duration-200 overflow-hidden">
+
+                                            <div className="py-1">
+                                                <button
+                                                    onClick={async () => {
+                                                        const input = prompt("Set disappearing messages (minutes)? Enter 0 to disable.", disappearingDuration.toString());
+                                                        if (input !== null) {
+                                                            const duration = parseInt(input);
+                                                            if (!isNaN(duration)) {
+                                                                setDisappearingDuration(duration);
+                                                                await supabase.from('chats').update({ disappearing_duration: duration }).eq('id', chatId);
+                                                                alert(`Disappearing messages set to ${duration} minutes.`);
+                                                            }
+                                                        }
+                                                        setShowMenu(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200"
+                                                >
+                                                    <Clock size={16} /> Disappearing Messages
+                                                </button>
+                                                <button
+                                                    onClick={handleClearChat}
+                                                    className="w-full text-left px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 text-sm text-red-500"
+                                                >
+                                                    <Trash2 size={16} /> Clear Chat
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </header>
 
                     {/* Messages Area */}
                     <div
                         ref={listRef}
-                        className="flex-1 overflow-y-auto p-4 bg-[#e5ddd5] opacity-95"
+                        className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-4 pt-20 bg-[#e5ddd5] dark:bg-black"
                     >
                         {loading ? (
-                            <div className="flex justify-center pt-10"><Loader2 className="animate-spin text-gray-500" /></div>
+                            <div className="flex justify-center pt-24"><Loader2 className="animate-spin text-gray-500" /></div>
                         ) : (
                             <>
                                 {messages.map((msg) => (
@@ -507,7 +639,8 @@ const ChatRoom: React.FC = () => {
                                         onEdit={handleEditMessage}
                                         onDelete={handleDeleteMessage}
                                         onForward={(m) => setForwardingMessage(m)}
-                                        onMediaClick={(url) => setPreviewImage(url)}
+                                        onMediaClick={(url, type) => setPreviewMedia({ url, type: type as 'image' | 'video' })}
+                                        onViewOnce={handleViewOnce}
                                     />
                                 ))}
                                 {typingUsers.size > 0 && (
@@ -554,26 +687,41 @@ const ChatRoom: React.FC = () => {
                     callerName={callerInfo?.name || chatName}
                     callerAvatar={callerInfo?.avatar || chatAvatar}
                     isAudioEnabled={!isMuted}
+                    isVideoEnabled={isVideoEnabled}
+                    isVideoCall={isVideoCall || false}
+                    localStream={localStream}
+                    remoteStream={remoteStream}
                     onToggleAudio={toggleMute}
+                    onToggleVideo={toggleVideo}
                     onAccept={answerCall}
                     onReject={endCall}
                     onHangup={endCall}
                 />
 
-                {/* Image Preview Modal */}
-                {previewImage && (
+                {/* Media Preview Modal */}
+                {previewMedia && (
                     <div
                         className="fixed inset-0 z-[60] bg-black flex items-center justify-center animate-in fade-in duration-200"
-                        onClick={() => setPreviewImage(null)}
+                        onClick={() => setPreviewMedia(null)}
                     >
                         <button className="absolute top-4 right-4 text-white p-2 rounded-full bg-black/50 hover:bg-black/70">
                             <ArrowLeft size={24} />
                         </button>
-                        <img
-                            src={previewImage}
-                            className="max-w-full max-h-screen object-contain"
-                            alt="Preview"
-                        />
+                        {previewMedia.type === 'video' ? (
+                            <video
+                                src={previewMedia.url}
+                                controls
+                                autoPlay
+                                className="max-w-full max-h-screen"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        ) : (
+                            <img
+                                src={previewMedia.url}
+                                className="max-w-full max-h-screen object-contain"
+                                alt="Preview"
+                            />
+                        )}
                     </div>
                 )}
             </div>

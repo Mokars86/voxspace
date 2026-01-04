@@ -17,6 +17,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
     const [isPaused, setIsPaused] = useState(false);
     const [duration, setDuration] = useState(5000); // Default duration 5s
     const videoRef = useRef<HTMLVideoElement>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
 
     // Interaction State
     const [replyText, setReplyText] = useState('');
@@ -58,14 +59,24 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
         recordView();
     }, [currentStory, user]);
 
-    // Timer Logic
+    // Timer Logic & Media Control
     useEffect(() => {
+        // Video Control
         if (currentStory?.type === 'video' && videoRef.current) {
             if (isPaused) {
                 videoRef.current.pause();
                 return;
             } else {
                 videoRef.current.play().catch(() => { });
+            }
+        }
+
+        // Voice/Audio Control
+        if (currentStory?.type === 'voice' && audioRef.current) {
+            if (isPaused) {
+                audioRef.current.pause();
+            } else {
+                audioRef.current.play().catch(e => console.error("Audio Play Error:", e));
             }
         }
 
@@ -271,12 +282,19 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
                 ) : currentStory.type === 'image' ? (
                     <img src={currentStory.media_url} className="w-full h-full object-contain" alt="Story" />
                 ) : currentStory.type === 'voice' ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-red-500 to-pink-600 text-white">
-                        <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-8 animate-pulse">
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-red-500 to-pink-600 text-white z-30 relative">
+                        <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-8 animate-pulse pointer-events-none">
                             <Mic size={48} />
                         </div>
-                        <audio controls src={currentStory.media_url} className="w-full max-w-sm mb-8" autoPlay />
-                        <p className="text-xl font-bold">Voice Note</p>
+                        {/* Audio Player with Ref and higher z-index for interaction */}
+                        <audio
+                            ref={audioRef}
+                            controls
+                            src={currentStory.media_url}
+                            className="w-full max-w-sm mb-8 relative z-50"
+                            autoPlay
+                        />
+                        <p className="text-xl font-bold pointer-events-none">Voice Note</p>
                     </div>
                 ) : currentStory.type === 'poll' ? (
                     <div className="w-full h-full flex flex-col items-center justify-center p-8 bg-gradient-to-br from-yellow-400 to-orange-500 text-white">
@@ -298,7 +316,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center p-8 text-center bg-gradient-to-br from-purple-600 to-blue-500">
+                    <div className={`w-full h-full flex items-center justify-center p-8 text-center bg-gradient-to-br ${currentStory.metadata?.backgroundColor || 'from-purple-600 to-blue-500'}`}>
                         <p className="text-xl md:text-2xl font-bold text-white">{currentStory.content}</p>
                     </div>
                 )}
@@ -306,6 +324,13 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
 
             {/* Footer / Reply */}
             <div className="absolute bottom-0 left-0 right-0 p-4 z-40 bg-gradient-to-t from-black/80 to-transparent pt-10 safe-bottom">
+                {/* Caption Display */}
+                {currentStory.content && (currentStory.type === 'image' || currentStory.type === 'video' || currentStory.type === 'voice') && (
+                    <div className="absolute bottom-24 left-0 right-0 p-4 text-center z-40 bg-gradient-to-t from-black/60 via-black/30 to-transparent">
+                        <p className="text-white text-lg font-medium drop-shadow-md">{currentStory.content}</p>
+                    </div>
+                )}
+
                 <div className="flex gap-4 items-center max-w-lg mx-auto w-full">
                     <input
                         type="text"

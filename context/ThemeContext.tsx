@@ -1,49 +1,52 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-type Theme = 'dark' | 'light';
+type Mode = 'dark' | 'light';
 
 interface ThemeProviderProps {
     children: React.ReactNode;
-    defaultTheme?: Theme;
+    defaultMode?: Mode;
     storageKey?: string;
 }
 
 interface ThemeProviderState {
-    theme: Theme;
-    setTheme: (theme: Theme) => void;
+    mode: Mode;
+    setMode: (mode: Mode) => void;
 }
 
 const initialState: ThemeProviderState = {
-    theme: 'light',
-    setTheme: () => null,
+    mode: 'light',
+    setMode: () => null,
 };
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({
     children,
-    defaultTheme = 'light',
+    defaultMode = 'light',
     storageKey = 'vite-ui-theme',
 }: ThemeProviderProps) {
-    const [theme, setTheme] = useState<Theme>(() => {
-        const stored = localStorage.getItem(storageKey);
-        return (stored === 'dark' || stored === 'light') ? stored : defaultTheme;
+    const [mode, setMode] = useState<Mode>(() => {
+        const stored = localStorage.getItem(`${storageKey}-mode`);
+        return (stored === 'dark' || stored === 'light') ? stored : defaultMode;
     });
 
     useEffect(() => {
         const root = window.document.documentElement;
 
+        // Remove old classes
         root.classList.remove('light', 'dark');
-        root.classList.add(theme);
-    }, [theme]);
+
+        // Add Mode
+        root.classList.add(mode);
+    }, [mode]);
 
     const value = React.useMemo(() => ({
-        theme,
-        setTheme: (theme: Theme) => {
-            localStorage.setItem(storageKey, theme);
-            setTheme(theme);
-        },
-    }), [theme, storageKey]);
+        mode,
+        setMode: (m: Mode) => {
+            localStorage.setItem(`${storageKey}-mode`, m);
+            setMode(m);
+        }
+    }), [mode, storageKey]);
 
     return (
         <ThemeProviderContext.Provider value={value}>

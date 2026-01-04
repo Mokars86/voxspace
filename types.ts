@@ -53,6 +53,7 @@ export interface Story {
   views_count?: number;
   poll_options?: { text: string; count: number }[];
   user_vote?: number; // Index of option user voted for
+  metadata?: any; // For background colors, fonts, etc.
 }
 
 export interface ChatPreview {

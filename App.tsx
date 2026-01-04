@@ -63,13 +63,17 @@ const App: React.FC = () => {
   usePushNotifications();
 
 
+  const { loading } = useAuth();
+
   React.useEffect(() => {
-    // Hide splash screen after app mounts
+    // Hide splash screen after app mounts AND auth is ready
     const hideSplash = async () => {
-      await SplashScreen.hide();
+      if (!loading) {
+        await SplashScreen.hide();
+      }
     };
     hideSplash();
-  }, []);
+  }, [loading]);
 
   React.useEffect(() => {
     // Request Notification permission on app start to trigger Android 13+ prompt

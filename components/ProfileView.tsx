@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Link as LinkIcon, Calendar, Settings, Grid, Image, Heart, Loader2 } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Calendar, Settings, Grid, Image, Heart, Loader2, QrCode, Archive } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PostCard from './PostCard';
 import { Post } from '../types';
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { useNavigate } from 'react-router-dom';
 import ImageViewer from './ImageViewer';
+import QRCodeModal from './QRCodeModal';
 
 interface ProfileData {
   full_name: string;
@@ -28,6 +29,7 @@ const ProfileView: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showQRModal, setShowQRModal] = useState(false);
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -140,25 +142,44 @@ const ProfileView: React.FC = () => {
             {displayProfile.bio || "No bio yet."}
           </p>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
-            <div className="flex items-center gap-1">
-              <Calendar size={16} />
-              Joined {new Date(displayProfile.created_at).toLocaleDateString()}
-            </div>
+          <div className="flex items-center gap-1">
+            <Calendar size={16} />
+            Joined {new Date(displayProfile.created_at).toLocaleDateString()}
           </div>
+        </div>
 
-          <div className="flex gap-4 text-sm mb-4">
-            <div>
-              <span className="font-bold text-gray-900 dark:text-white">{(displayProfile as any).following_count || 0}</span>{' '}
-              <span className="text-gray-500 dark:text-gray-400">Following</span>
-            </div>
-            <div>
-              <span className="font-bold text-gray-900 dark:text-white">{(displayProfile as any).followers_count || 0}</span>{' '}
-              <span className="text-gray-500 dark:text-gray-400">Followers</span>
-            </div>
+        <div className="flex gap-3 mb-4">
+          <button
+            onClick={() => setShowQRModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <QrCode size={18} />
+            <span>My QR Code</span>
+          </button>
+          <button
+            onClick={() => navigate('/chats', { state: { tab: 'archived' } })}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <Archive size={18} />
+            <span>Archived</span>
+          </button>
+        </div>
+
+        <QRCodeModal isOpen={showQRModal} onClose={() => setShowQRModal(false)} />
+
+
+        <div className="flex gap-4 text-sm mb-4">
+          <div>
+            <span className="font-bold text-gray-900 dark:text-white">{(displayProfile as any).following_count || 0}</span>{' '}
+            <span className="text-gray-500 dark:text-gray-400">Following</span>
+          </div>
+          <div>
+            <span className="font-bold text-gray-900 dark:text-white">{(displayProfile as any).followers_count || 0}</span>{' '}
+            <span className="text-gray-500 dark:text-gray-400">Followers</span>
           </div>
         </div>
       </div>
+
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10 transition-colors">
@@ -210,7 +231,7 @@ const ProfileView: React.FC = () => {
         onClose={() => setPreviewImage(null)}
         src={previewImage || ''}
       />
-    </div>
+    </div >
   );
 };
 

@@ -2,19 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { ArrowLeft, Send, Upload, MoreVertical, Loader2 } from 'lucide-react';
+import { ArrowLeft, MoreVertical, Loader2 } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import ChatInput from '../../components/chat/ChatInput';
+import MessageBubble, { ChatMessage } from '../../components/chat/MessageBubble';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
-interface SpaceMessage {
-    id: string;
-    content: string;
+interface SpaceMessage extends ChatMessage {
     sender_id: string;
-    created_at: string;
-    sender: {
-        full_name: string;
-        avatar_url: string;
-        username: string;
-    };
+    senderName?: string;
+    senderAvatar?: string;
 }
 
 const formatDate = (dateString: string) => {
@@ -32,11 +29,21 @@ export const SpaceChatRoomContent: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [messages, setMessages] = useState<SpaceMessage[]>([]);
-    const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
     const [spaceName, setSpaceName] = useState('');
     const [isMember, setIsMember] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Reuse helper from ChatRoom if possible, or duplicate safely
+    const safeDate = (dateStr: string) => {
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return "";
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+            return "";
+        }
+    };
 
     const scrollToBottom = () => {
         try {
@@ -75,6 +82,9 @@ export const SpaceChatRoomContent: React.FC = () => {
                         content,
                         sender_id,
                         created_at,
+                        type,
+                        media_url,
+                        metadata,
                         sender:sender_id(full_name, avatar_url, username)
                     `)
                     .eq('space_id', id)
@@ -85,18 +95,28 @@ export const SpaceChatRoomContent: React.FC = () => {
                     throw error;
                 }
 
-                console.log("Messages fetched:", msgsData?.length);
-
-                const formattedMessages = (msgsData || []).map((m: any) => ({
+                const formattedMessages: SpaceMessage[] = (msgsData || []).map((m: any) => ({
                     id: m.id,
-                    content: m.content || "",
+                    text: m.content || "",
+                    sender: m.sender_id === user?.id ? 'me' : 'them',
+                    time: safeDate(m.created_at),
+                    type: m.type || 'text',
+                    status: 'read',
+                    mediaUrl: m.media_url,
+                    metadata: m.metadata || {},
                     sender_id: m.sender_id,
-                    created_at: m.created_at || new Date().toISOString(),
-                    sender: {
-                        full_name: m.sender?.full_name || 'Unknown User',
-                        avatar_url: m.sender?.avatar_url || '',
-                        username: m.sender?.username || 'unknown'
-                    }
+                    // Extra for display if MessageBubble uses them (it uses sender 'me'|'them', but we might want names)
+                    // MessageBubble logic might need tweaking or we pass custom render props? 
+                    // MessageBubble is designed for DMs mainly.
+                    // For Groups/Spaces, we usually want to show the sender name.
+                    // Let's assume MessageBubble handles 'them' by showing name if provided? 
+                    // Checking MessageBubble props... it takes `message`.
+                    // We might need to hack 'sender' to be the name? No, 'sender' is limit to 'me' | 'them'.
+                    // We can add a 'senderName' and 'senderAvatar' to valid Message interface?
+                    // Or we just modify MessageBubble to accept optional sender details.
+                    // For now, let's map standard fields.
+                    senderName: m.sender?.full_name,
+                    senderAvatar: m.sender?.avatar_url
                 }));
 
                 setMessages(formattedMessages);
@@ -127,10 +147,16 @@ export const SpaceChatRoomContent: React.FC = () => {
 
                 const newMsg: SpaceMessage = {
                     id: payload.new.id,
-                    content: payload.new.content,
+                    text: payload.new.content,
+                    sender: payload.new.sender_id === user?.id ? 'me' : 'them',
+                    time: safeDate(payload.new.created_at),
+                    type: payload.new.type || 'text',
+                    status: 'read',
+                    mediaUrl: payload.new.media_url,
+                    metadata: payload.new.metadata || {},
                     sender_id: payload.new.sender_id,
-                    created_at: payload.new.created_at,
-                    sender: senderData || { full_name: 'Unknown', avatar_url: '', username: 'unknown' }
+                    senderName: senderData?.full_name,
+                    senderAvatar: senderData?.avatar_url
                 };
 
                 setMessages(prev => [...prev, newMsg]);
@@ -158,24 +184,40 @@ export const SpaceChatRoomContent: React.FC = () => {
         }
     };
 
-    const handleSendMessage = async () => {
-        if (!newMessage.trim() || !user || !id) return;
-
+    const handleSend = async (content: string, type: 'text' | 'image' | 'video' | 'voice' | 'buzz' | 'location' | 'audio' | 'file', file?: File, duration?: number, metadata?: any) => {
+        if (!user || !id) return;
         if (!isMember) {
             alert("You must join the space to send messages.");
             return;
         }
 
-        const msgToSend = newMessage.trim();
-        setNewMessage('');
-
         try {
+            let mediaUrl = '';
+
+            if (file) {
+                const ext = file.name.split('.').pop();
+                const fileName = `space_${id}/${Date.now()}.${ext}`;
+                // Reusing chat-attachments bucket for simplicity or create 'space-attachments'
+                // Let's use 'chat-attachments' as verified
+                const { error: uploadError } = await supabase.storage
+                    .from('chat-attachments')
+                    .upload(fileName, file);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage.from('chat-attachments').getPublicUrl(fileName);
+                mediaUrl = data.publicUrl;
+            }
+
             const { error } = await supabase
                 .from('space_messages')
                 .insert({
                     space_id: id,
                     sender_id: user.id,
-                    content: msgToSend
+                    content: content,
+                    type: type,
+                    media_url: mediaUrl,
+                    metadata: metadata
                 });
 
             if (error) throw error;
@@ -220,28 +262,33 @@ export const SpaceChatRoomContent: React.FC = () => {
                         const isMe = msg.sender_id === user?.id;
                         const isSequential = index > 0 && messages[index - 1]?.sender_id === msg.sender_id;
 
-                        return (
-                            <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} ${isSequential ? 'mt-1' : 'mt-4'}`}>
-                                {!isMe && !isSequential && (
-                                    <img
-                                        src={msg.sender.avatar_url || `https://ui-avatars.com/api/?name=${msg.sender.full_name}`}
-                                        className="w-8 h-8 rounded-full object-cover border border-gray-100 self-end mb-1"
-                                    />
-                                )}
-                                {isMe && !isSequential && <div className="w-8" />}
-                                {isSequential && <div className="w-8" />}
+                        // Add simple sequential time grouping context logic if desiered, but for now just layout
+                        // MessageBubble manages its own "me" alignment but we need to layout the avatar external to it for "them"
+                        // Actually MessageBubble uses w-full and justify-start/end.
+                        // To add an avatar, we need to wrap it.
 
-                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${isMe
-                                    ? 'bg-[#ff1744] text-white rounded-br-none'
-                                    : 'bg-white text-gray-800 shadow-sm rounded-bl-none'
-                                    }`}>
+                        return (
+                            <div key={msg.id} className={cn("flex gap-2 mb-1", isMe ? "justify-end" : "justify-start")}>
+                                {!isMe && (
+                                    <div className="flex flex-col justify-end w-8 shrink-0">
+                                        {!isSequential ? (
+                                            <img
+                                                src={msg.senderAvatar || `https://ui-avatars.com/api/?name=${msg.senderName}`}
+                                                className="w-8 h-8 rounded-full object-cover border border-gray-100 mb-2"
+                                                alt={msg.senderName}
+                                            />
+                                        ) : <div className="w-8" />}
+                                    </div>
+                                )}
+
+                                <div className={isMe ? "max-w-[85%]" : "max-w-[75%]"}>
                                     {!isMe && !isSequential && (
-                                        <p className="text-[10px] font-bold opacity-60 mb-1">{msg.sender.full_name}</p>
+                                        <p className="text-[10px] text-gray-400 ml-1 mb-0.5">{msg.senderName}</p>
                                     )}
-                                    <p className="text-sm leading-relaxed">{msg.content}</p>
-                                    <span className={`text-[10px] block text-right mt-1 ${isMe ? 'text-white/70' : 'text-gray-400'}`}>
-                                        {formatDate(msg.created_at)}
-                                    </span>
+                                    <MessageBubble
+                                        message={msg}
+                                        onMediaClick={() => { }}
+                                    />
                                 </div>
                             </div>
                         );
@@ -251,37 +298,18 @@ export const SpaceChatRoomContent: React.FC = () => {
             </div>
 
             {/* Input Area or Join Prompt */}
-            <div className="p-4 bg-white border-t border-gray-100">
-                {isMember ? (
-                    <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-2xl border border-gray-100 focus-within:ring-2 ring-[#ff1744]/20 transition-all">
-                        <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors">
-                            <Upload size={20} />
-                        </button>
-                        <input
-                            type="text"
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                            placeholder="Message #general..."
-                            className="flex-1 bg-transparent border-none outline-none text-gray-900 placeholder:text-gray-400"
-                        />
-                        <button
-                            onClick={handleSendMessage}
-                            disabled={!newMessage.trim()}
-                            className="p-2 bg-[#ff1744] text-white rounded-xl shadow-md disabled:opacity-50 disabled:shadow-none transition-all hover:bg-red-600 active:scale-95"
-                        >
-                            <Send size={20} />
-                        </button>
-                    </div>
-                ) : (
+            {isMember ? (
+                <ChatInput onSend={handleSend} />
+            ) : (
+                <div className="p-4 bg-white border-t border-gray-100">
                     <button
                         onClick={handleJoinSpace}
                         className="w-full py-3 bg-[#ff1744] text-white font-bold rounded-xl shadow-lg active:scale-95 transition-transform"
                     >
                         Join Space to Chat
                     </button>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 };

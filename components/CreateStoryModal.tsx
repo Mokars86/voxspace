@@ -27,6 +27,10 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onSuccess 
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // New State for Preview/Caption
+    const [previewFile, setPreviewFile] = useState<{ file: File, type: 'image' | 'video' } | null>(null);
+    const [caption, setCaption] = useState('');
+
     const colors = [
         'from-purple-500 to-blue-500',
         'from-red-500 to-orange-500',
@@ -35,17 +39,27 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onSuccess 
         'from-gray-700 to-gray-900',
     ];
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !user) return;
+        if (!file) return;
+
+        const isVideo = file.type.startsWith('video/');
+        setPreviewFile({
+            file,
+            type: isVideo ? 'video' : 'image'
+        });
+        setMode('media'); // We reuse 'media' mode name or use a new one, let's use 'media' as 'preview'
+    };
+
+    const handleMediaPost = async () => {
+        if (!previewFile || !user) return;
 
         setLoading(true);
         try {
+            const file = previewFile.file;
             const fileExt = file.name.split('.').pop();
             const fileName = `${user.id}/${Date.now()}.${fileExt}`;
             const filePath = `${fileName}`;
-
-            const isVideo = file.type.startsWith('video/');
 
             const { error: uploadError } = await supabase.storage
                 .from('stories')
@@ -56,8 +70,9 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onSuccess 
             const { data } = supabase.storage.from('stories').getPublicUrl(filePath);
 
             await createStory({
-                type: isVideo ? 'video' : 'image',
-                media_url: data.publicUrl
+                type: previewFile.type,
+                media_url: data.publicUrl,
+                content: caption // Save caption in content column
             });
 
         } catch (error) {
@@ -73,7 +88,10 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onSuccess 
         await createStory({
             type: 'text',
             content: text,
-            // Store background class or generic text
+            metadata: {
+                backgroundColor,
+                font: 'sans', // Could add font selection later
+            }
         });
     };
 
@@ -240,6 +258,41 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({ onClose, onSuccess 
                     </div>
                 )}
 
+                {/* Media Preview Mode */}
+                {mode === 'media' && previewFile && (
+                    <div className="flex flex-col h-full bg-black relative">
+                        <div className="flex-1 relative flex items-center justify-center bg-gray-900">
+                            {previewFile.type === 'video' ? (
+                                <video src={URL.createObjectURL(previewFile.file)} className="max-w-full max-h-full object-contain" controls />
+                            ) : (
+                                <img src={URL.createObjectURL(previewFile.file)} className="max-w-full max-h-full object-contain" alt="Preview" />
+                            )}
+                        </div>
+
+                        <div className="p-4 bg-gradient-to-t from-black/80 to-transparent absolute bottom-0 left-0 right-0">
+                            <input
+                                type="text"
+                                value={caption}
+                                onChange={(e) => setCaption(e.target.value)}
+                                placeholder="Add a caption..."
+                                className="w-full bg-transparent text-white placeholder-white/70 border-b border-white/30 pb-2 mb-4 outline-none focus:border-white font-medium shadow-black drop-shadow-md"
+                                autoFocus
+                            />
+                            <div className="flex justify-between items-center">
+                                <button onClick={() => { setMode('select'); setPreviewFile(null); setCaption(''); }} className="text-white hover:text-gray-300 font-bold">Cancel</button>
+                                <button
+                                    onClick={handleMediaPost}
+                                    disabled={loading}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-full font-bold shadow-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {loading ? <Loader2 className="animate-spin" /> : "Share Story"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Text Mode (Hidden if in media preview) */}
                 {mode === 'text' && (
                     <div className={`aspect-[9/16] w-full bg-gradient-to-br ${backgroundColor} flex flex-col p-6 relative transition-colors duration-500`}>
                         <textarea

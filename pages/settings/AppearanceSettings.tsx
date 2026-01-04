@@ -5,51 +5,50 @@ import { useTheme } from '../../context/ThemeContext';
 
 const AppearanceSettings: React.FC = () => {
     const navigate = useNavigate();
-    const { theme, setTheme } = useTheme();
+    const { mode, setMode } = useTheme();
 
     return (
-        <div className="flex flex-col h-screen bg-white dark:bg-gray-900 dark:text-gray-100 transition-colors duration-300">
-            <header className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
-                <button onClick={() => navigate(-1)} className="text-gray-600 dark:text-gray-300 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
+        <div className="flex flex-col h-screen bg-transparent transition-colors duration-300">
+            <header className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-background/80 backdrop-blur-md z-10">
+                <button onClick={() => navigate(-1)} className="text-muted-foreground p-2 hover:bg-muted rounded-full">
                     <ArrowLeft size={24} />
                 </button>
                 <h1 className="text-xl font-bold">Appearance</h1>
             </header>
 
-            <div className="flex-1 p-4 flex flex-col justify-between">
+            <div className="flex-1 p-4 flex flex-col gap-8 overflow-y-auto">
+                {/* Mode Selection */}
                 <section>
-                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 ml-2">Theme Mode</h3>
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-4 ml-1">Theme Mode</h3>
                     <div className="grid grid-cols-2 gap-4">
                         <ThemeCard
                             icon={<Sun size={24} />}
                             label="Light Mode"
-                            selected={theme === 'light'}
-                            onClick={() => setTheme('light')}
+                            selected={mode === 'light'}
+                            onClick={() => setMode('light')}
+                            colorClass="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                         />
                         <ThemeCard
                             icon={<Moon size={24} />}
                             label="Dark Mode"
-                            selected={theme === 'dark'}
-                            onClick={() => setTheme('dark')}
+                            selected={mode === 'dark'}
+                            onClick={() => setMode('dark')}
+                            colorClass="bg-gray-900 text-white"
                         />
                     </div>
                 </section>
-
-                <div className="pt-8 px-4 text-center text-sm text-gray-400">
-                    <p>Changes are saved automatically.</p>
-                </div>
             </div>
         </div>
     );
 };
 
-const ThemeCard = ({ icon, label, selected, onClick }: any) => (
+const ThemeCard = ({ icon, label, selected, onClick, colorClass }: any) => (
     <button
         onClick={onClick}
-        className={`flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all ${selected
-            ? 'border-[#ff1744] bg-red-50 dark:bg-red-900/20 text-[#ff1744]'
-            : 'border-transparent bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
+        className={`flex flex-col items-center gap-3 p-6 rounded-2xl border-2 transition-all duration-200 ${selected
+            ? 'border-primary ring-2 ring-primary/20 scale-[1.02]'
+            : 'border-transparent hover:bg-muted/50'
+            } ${colorClass}`}
     >
         {icon}
         <span className="font-bold text-sm">{label}</span>

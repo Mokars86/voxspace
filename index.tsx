@@ -16,7 +16,7 @@ root.render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <ThemeProvider defaultTheme="light" storageKey="voxspace-theme">
+        <ThemeProvider defaultMode="light" storageKey="voxspace-theme">
           <App />
         </ThemeProvider>
       </AuthProvider>

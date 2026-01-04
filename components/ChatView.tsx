@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit, Archive, CheckCheck, Loader2, Phone, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, Edit, Archive, CheckCheck, Loader2, Phone, ArrowDownLeft, ArrowUpRight, QrCode } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatPreview } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
+
 
 const ChatView: React.FC = () => {
   const navigate = useNavigate();
@@ -12,9 +13,11 @@ const ChatView: React.FC = () => {
   const [filter, setFilter] = useState('');
   const [chats, setChats] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'archived'>('all');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'archived'>((location.state as any)?.tab || 'all');
   const [viewMode, setViewMode] = useState<'chats' | 'calls'>('chats');
   const [callLogs, setCallLogs] = useState<any[]>([]);
+
 
   const fetchCallLogs = async () => {
     if (!user) return;
@@ -67,7 +70,7 @@ const ChatView: React.FC = () => {
       // 2. Fetch the latest message for each chat
       const { data: messages, error: messagesError } = await supabase
         .from('messages')
-        .select('chat_id, content, created_at, sender_id')
+        .select('chat_id, content, created_at, sender_id, type')
         .in('chat_id', chatIds)
         .order('created_at', { ascending: false });
 
@@ -118,10 +121,25 @@ const ChatView: React.FC = () => {
           }
         }
 
+        // Determine preview text based on type
+        let previewText = LatestMsg ? LatestMsg.content : 'No messages yet';
+        if (LatestMsg) {
+          switch (LatestMsg.type) {
+            case 'image': previewText = '📷 Image'; break;
+            case 'video': previewText = '🎥 Video'; break;
+            case 'voice': previewText = '🎤 Voice Note'; break;
+            case 'audio': previewText = '🎵 Audio'; break;
+            case 'file': previewText = '📁 File'; break;
+            case 'location': previewText = '📍 Location'; break;
+            case 'buzz': previewText = '⚡ BUZZ!'; break;
+            default: previewText = LatestMsg.content || 'Sent a message';
+          }
+        }
+
         return {
           id: chatInfo?.id,
           name: name,
-          lastMessage: LatestMsg ? LatestMsg.content : 'No messages yet',
+          lastMessage: previewText,
           time: LatestMsg ? new Date(LatestMsg.created_at).toLocaleDateString() : '',
           unread: unreadMap[chatInfo.id] || 0, // Use RPC data
           avatar: avatar,
@@ -299,12 +317,14 @@ const ChatView: React.FC = () => {
               >
                 Requests
               </button>
-              <button
-                onClick={() => setActiveTab('archived')}
-                className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all", activeTab === 'archived' ? "bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}
-              >
-                Archived
-              </button>
+              {activeTab === 'archived' && (
+                <button
+                  onClick={() => setActiveTab('archived')}
+                  className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm")}
+                >
+                  Archived
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -440,38 +460,41 @@ const ChatView: React.FC = () => {
       </div>
 
       {/* Rename Modal */}
-      {editingChat && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs animate-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-bold mb-4">Rename Chat</h3>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#ff1744] outline-none mb-4 font-medium"
-              placeholder="Enter new name"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => setEditingChat(null)}
-                className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveRename}
-                disabled={!newName.trim()}
-                className="flex-1 py-3 bg-[#ff1744] text-white font-bold rounded-xl shadow-md hover:bg-red-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Save
-              </button>
+      {
+        editingChat && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-xs animate-in zoom-in-95 duration-200">
+              <h3 className="text-lg font-bold mb-4">Rename Chat</h3>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#ff1744] outline-none mb-4 font-medium"
+                placeholder="Enter new name"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingChat(null)}
+                  className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveRename}
+                  disabled={!newName.trim()}
+                  className="flex-1 py-3 bg-[#ff1744] text-white font-bold rounded-xl shadow-md hover:bg-red-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+
+    </div >
   );
 };
 

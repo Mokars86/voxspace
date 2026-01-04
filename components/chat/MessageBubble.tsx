@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import { Check, CheckCheck, Play, Pause, File as FileIcon, MapPin, Music } from 'lucide-react';
+import { Check, CheckCheck, Play, Pause, File as FileIcon, MapPin, Music, Timer, EyeOff, Lock } from 'lucide-react';
 
 export interface ChatMessage {
     id: string;
@@ -19,6 +19,9 @@ export interface ChatMessage {
     };
     isDeleted?: boolean;
     isEdited?: boolean;
+    expiresAt?: string;
+    viewOnce?: boolean;
+    isViewed?: boolean;
 }
 
 export interface MessageProps {
@@ -29,10 +32,122 @@ export interface MessageProps {
     onEdit?: (msgId: string, newText: string) => void;
     onDelete?: (msgId: string) => void;
     onForward?: (msg: any) => void;
-    onMediaClick?: (url: string) => void;
+    onMediaClick?: (url: string, type: 'image' | 'video') => void;
+    onViewOnce?: (msg: ChatMessage) => void;
 }
 
-const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact, onLongPress, onEdit, onDelete, onForward, onMediaClick }) => {
+const AudioPlayer = ({ url, isMe, duration: initialDuration, type }: { url: string, isMe: boolean, duration?: number | string, type: string }) => {
+    const [isPlaying, setIsPlaying] = React.useState(false);
+    const [currentTime, setCurrentTime] = React.useState(0);
+    const [duration, setDuration] = React.useState(0);
+    const audioRef = React.useRef<HTMLAudioElement>(null);
+    const progressBarRef = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        if (initialDuration && typeof initialDuration === 'number') {
+            setDuration(initialDuration);
+        }
+    }, [initialDuration]);
+
+    const togglePlay = () => {
+        if (!audioRef.current) return;
+        if (isPlaying) {
+            audioRef.current.pause();
+        } else {
+            audioRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+    };
+
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+            if (!initialDuration && audioRef.current.duration && audioRef.current.duration !== Infinity) {
+                setDuration(audioRef.current.duration);
+            }
+        }
+    };
+
+    const handleEnded = () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        if (audioRef.current) audioRef.current.currentTime = 0;
+    };
+
+    const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!audioRef.current || !progressBarRef.current) return;
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const percentage = Math.min(Math.max(x / rect.width, 0), 1);
+        const newTime = (duration || audioRef.current.duration || 10) * percentage; // Fallback 10s if duration unknown
+
+        audioRef.current.currentTime = newTime;
+        setCurrentTime(newTime);
+    };
+
+    const formatTime = (time: number) => {
+        const min = Math.floor(time / 60);
+        const sec = Math.floor(time % 60);
+        return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+    };
+
+    return (
+        <div className="flex items-center gap-3 min-w-[220px] py-1">
+            <button
+                onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm transition-transform active:scale-95",
+                    isMe ? "bg-white text-[#ff1744]" : "bg-[#ff1744] text-white"
+                )}
+            >
+                {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}
+            </button>
+
+            <div
+                className="flex-1 flex flex-col justify-center gap-1 cursor-pointer group"
+                onClick={(e) => { e.stopPropagation(); handleSeek(e); }}
+                ref={progressBarRef}
+            >
+                <div className="h-8 flex items-center gap-[2px] w-full">
+                    {[...Array(30)].map((_, i) => {
+                        const progress = currentTime / (duration || 1);
+                        // Visual effect: random heights for "waveform" look, but could be real data later
+                        const height = Math.max(20, Math.random() * 100) + '%';
+                        const isPlayed = (i / 30) < progress;
+
+                        return (
+                            <div
+                                key={i}
+                                className={cn(
+                                    "w-1 rounded-full transition-all duration-100",
+                                    isMe
+                                        ? (isPlayed ? "bg-white opacity-100" : "bg-white opacity-40")
+                                        : (isPlayed ? "bg-[#ff1744] opacity-100" : "bg-gray-300 dark:bg-gray-600")
+                                )}
+                                style={{ height: height }}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
+
+            <span className={cn("text-xs font-medium tabular-nums w-10 text-right", isMe ? "text-white/90" : "text-gray-500")}>
+                {formatTime(isPlaying ? currentTime : (duration || 0))}
+            </span>
+
+            <audio
+                ref={audioRef}
+                src={url}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleTimeUpdate}
+                onEnded={handleEnded}
+                className="hidden"
+            />
+        </div>
+    );
+};
+
+const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact, onLongPress, onEdit, onDelete, onForward, onMediaClick, onViewOnce }) => {
     const isMe = message.sender === 'me';
     const [isPlaying, setIsPlaying] = React.useState(false);
     const [showMenu, setShowMenu] = React.useState(false);
@@ -101,13 +216,13 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                 "relative max-w-[75%] rounded-2xl shadow-sm transition-all",
                 isMe
                     ? "bg-[#ff1744] text-white rounded-tr-none"
-                    : "bg-white text-gray-900 rounded-tl-none"
+                    : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-none"
             )}>
                 {/* Reply Context */}
                 {message.replyTo && (
                     <div className={cn(
                         "text-xs mb-1 p-2 rounded-lg border-l-4 opacity-80 truncate",
-                        isMe ? "bg-white/20 border-white/50" : "bg-gray-100 border-gray-300"
+                        isMe ? "bg-black/10 border-white/50" : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                     )}>
                         <span className="font-bold block">{message.replyTo.sender === 'me' ? 'You' : 'Them'}</span>
                         {message.replyTo.text}
@@ -115,87 +230,88 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                 )}
 
                 <div className="px-3 py-2">
-                    {/* Media: Image */}
-                    {message.type === 'image' && message.mediaUrl && (
-                        <div
-                            className="mb-1 overflow-hidden rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
-                            onClick={(e) => {
-                                e.stopPropagation(); // Prevent message bubble click/long-press interactions if any
-                                onMediaClick && onMediaClick(message.mediaUrl!);
-                            }}
-                        >
-                            <img src={message.mediaUrl} alt="Shared" className="w-full h-auto max-h-[300px] object-cover" />
-                        </div>
-                    )}
-
-                    {/* Media: Video */}
-                    {message.type === 'video' && message.mediaUrl && (
-                        <div className="mb-1 overflow-hidden rounded-lg relative">
-                            <video src={message.mediaUrl} controls className="w-full max-h-[300px] rounded-lg" />
-                        </div>
-                    )}
-
-                    {/* Media: Voice OR Audio */}
-                    {(message.type === 'voice' || message.type === 'audio') && message.mediaUrl && (
-                        <div className="flex items-center gap-3 min-w-[200px] py-2">
-                            <button
-                                onClick={() => setIsPlaying(!isPlaying)}
-                                className={cn(
-                                    "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
-                                    isMe ? "bg-white text-[#ff1744]" : "bg-[#ff1744] text-white"
-                                )}
-                            >
-                                {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
-                            </button>
-                            {/* Fake waveform or Music Icon */}
-                            <div className="flex-1 flex items-center gap-0.5 h-6">
-                                {message.type === 'audio' ? (
-                                    <div className="flex items-center gap-2 w-full">
-                                        <Music size={16} className="opacity-70" />
-                                        <div className={cn("h-1 flex-1 rounded-full", isMe ? "bg-white/30" : "bg-gray-200")}>
-                                            <div className={cn("h-full w-1/3 rounded-full", isMe ? "bg-white" : "bg-gray-400")} />
-                                        </div>
+                    {/* View Once Logic */}
+                    {message.viewOnce ? (
+                        <div className="flex items-center gap-3 p-2 rounded-xl min-w-[120px]">
+                            {message.isViewed ? (
+                                <div className="flex items-center gap-2 text-gray-400">
+                                    <div className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center">
+                                        <div className="w-4 h-4 rounded-full bg-gray-300" />
                                     </div>
-                                ) : (
-                                    [...Array(20)].map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className={cn(
-                                                "w-1 rounded-full",
-                                                isMe ? "bg-white/50" : "bg-gray-300"
-                                            )}
-                                            style={{ height: Math.random() * 100 + '%' }}
-                                        />
-                                    ))
-                                )}
-                            </div>
-                            <span className="text-xs opacity-70">
-                                {message.metadata?.duration ? message.metadata.duration : message.type === 'audio' ? 'Audio' : '0:15'}
-                            </span>
-                            {/* Note: Real audio player needed here normally */}
-                            {isPlaying && <audio src={message.mediaUrl} autoPlay onEnded={() => setIsPlaying(false)} className="hidden" />}
+                                    <span className="italic text-sm">Opened</span>
+                                </div>
+                            ) : isMe ? (
+                                <div className="flex items-center gap-2 text-white/80">
+                                    <div className="w-8 h-8 rounded-full border border-white/50 border-dashed flex items-center justify-center">
+                                        <Timer size={16} />
+                                    </div>
+                                    <span className="italic text-sm">View Once</span>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onViewOnce && onViewOnce(message); }}
+                                    className="flex items-center gap-2 text-primary font-bold bg-white/90 px-3 py-1.5 rounded-full shadow-sm hover:scale-105 transition-transform"
+                                >
+                                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary text-xs">
+                                        1
+                                    </div>
+                                    <span className="text-sm">Tap to view</span>
+                                </button>
+                            )}
                         </div>
-                    )}
+                    ) : (
+                        <>
+                            {/* Media: Image */}
+                            {message.type === 'image' && message.mediaUrl && (
+                                <div
+                                    className="mb-1 overflow-hidden rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
+                                    onClick={(e) => {
+                                        e.stopPropagation(); // Prevent message bubble click/long-press interactions if any
+                                        onMediaClick && onMediaClick(message.mediaUrl!, 'image');
+                                    }}
+                                >
+                                    <img src={message.mediaUrl} alt="Shared" className="w-full h-auto max-h-[300px] object-cover" />
+                                </div>
+                            )}
 
-                    {/* Media: File (Generic) */}
-                    {message.type === 'file' && (
-                        <a href={message.mediaUrl} target="_blank" rel="noreferrer" className={cn(
-                            "flex items-center gap-3 p-3 rounded-xl mb-1 transition-colors",
-                            isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
-                        )}>
-                            <div className={cn(
-                                "p-2 rounded-lg",
-                                isMe ? "bg-white/20" : "bg-white"
-                            )}>
-                                <FileIcon size={24} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate max-w-[150px]">
-                                    {message.text || "Attachment"}
-                                </p>
-                                <span className="text-xs opacity-70">Click to open</span>
-                            </div>
-                        </a>
+                            {/* Media: Video */}
+                            {message.type === 'video' && message.mediaUrl && (
+                                <div className="mb-1 overflow-hidden rounded-lg relative">
+                                    <video src={message.mediaUrl} controls className="w-full max-h-[300px] rounded-lg" />
+                                </div>
+                            )}
+
+                            {/* Media: Voice OR Audio */}
+                            {(message.type === 'voice' || message.type === 'audio') && message.mediaUrl && (
+                                <AudioPlayer
+                                    url={message.mediaUrl}
+                                    isMe={isMe}
+                                    duration={message.metadata?.duration}
+                                    type={message.type}
+                                />
+                            )}
+
+                            {/* Media: File (Generic) */}
+                            {message.type === 'file' && (
+                                <a href={message.mediaUrl} target="_blank" rel="noreferrer" className={cn(
+                                    "flex items-center gap-3 p-3 rounded-xl mb-1 transition-colors",
+                                    isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
+                                )}>
+                                    <div className={cn(
+                                        "p-2 rounded-lg",
+                                        isMe ? "bg-white/20" : "bg-white"
+                                    )}>
+                                        <FileIcon size={24} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-sm truncate max-w-[150px]">
+                                            {message.text || "Attachment"}
+                                        </p>
+                                        <span className="text-xs opacity-70">Click to open</span>
+                                    </div>
+                                </a>
+                            )}
+                        </>
                     )}
 
                     {/* Location */}
@@ -208,7 +324,7 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                         >
                             {/* Static Map Placeholder - In real app use Google Maps Static API or Leaflet */}
                             <div className="bg-gray-200 h-32 w-full flex items-center justify-center relative">
-                                <MapPin size={32} className="text-[#ff1744] drop-shadow-md z-10" />
+                                <MapPin size={32} className="text-primary drop-shadow-md z-10" />
                                 <div className="absolute inset-0 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover opacity-20"></div>
                             </div>
                             <div className={cn("p-2 text-sm", isMe ? "bg-white/10" : "bg-gray-50")}>
@@ -236,7 +352,7 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                                 />
                                 <div className="flex justify-end gap-2 text-xs font-bold">
                                     <button onClick={(e) => { e.stopPropagation(); setIsEditing(false); }} className={cn("px-2 py-1 rounded hover:bg-black/10", isMe ? "text-white" : "text-gray-500")}>Cancel</button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className={cn("px-2 py-1 rounded shadow-sm", isMe ? "bg-white text-[#ff1744] hover:bg-gray-50" : "bg-blue-500 text-white hover:bg-blue-600")}>Save</button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className={cn("px-2 py-1 rounded shadow-sm", isMe ? "bg-white text-primary hover:bg-gray-50" : "bg-blue-500 text-white hover:bg-blue-600")}>Save</button>
                                 </div>
                             </div>
                         ) : (

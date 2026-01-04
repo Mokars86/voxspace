@@ -1,3 +1,5 @@
+
+
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 
@@ -11,18 +13,24 @@ const ICE_SERVERS = {
 export const useWebRTC = (user: any, chatId: string | undefined) => {
     const [callState, setCallState] = useState<'idle' | 'outgoing' | 'incoming' | 'connected' | 'ending'>('idle');
     const [isMuted, setIsMuted] = useState(false);
+    const [isVideoEnabled, setIsVideoEnabled] = useState(false); // Default false, set to true if video call
+    const [isVideoCall, setIsVideoCall] = useState(false);       // Tracks if the CURRENT call session is video
+
     const peerConnection = useRef<RTCPeerConnection | null>(null);
-    const localStream = useRef<MediaStream | null>(null);
-    const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Instead of Refs for streams, we might want state to force re-render if stream changes, 
+    // but typically we attach the ref.current to video element. 
+    // However, to let the UI know we HAVE a stream, state is useful.
+    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+    const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
+    const localStreamRef = useRef<MediaStream | null>(null);
+
     const [callerInfo, setCallerInfo] = useState<{ id: string, name: string, avatar: string } | null>(null);
     const [callId, setCallId] = useState<string | null>(null);
     const startTimeRef = useRef<number | null>(null);
 
     useEffect(() => {
-        // Initialize invisible audio element for remote stream
-        remoteAudioRef.current = new Audio();
-        remoteAudioRef.current.autoplay = true;
-
         return () => {
             endCall();
         };
@@ -40,9 +48,8 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
         };
 
         pc.ontrack = (event) => {
-            if (remoteAudioRef.current && event.streams[0]) {
-                remoteAudioRef.current.srcObject = event.streams[0];
-                remoteAudioRef.current.play().catch(e => console.error("Error playing audio", e));
+            if (event.streams && event.streams[0]) {
+                setRemoteStream(event.streams[0]);
             }
         };
 
@@ -58,21 +65,21 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
         return pc;
     };
 
-    const getLocalStream = async () => {
+    const getLocalStream = async (video: boolean) => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            localStream.current = stream;
+            // If we already have a stream and it matches requirements, reuse? 
+            // Usually simpler to get new one.
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: video });
+            localStreamRef.current = stream;
+            setLocalStream(stream);
+            setIsVideoEnabled(video);
             return stream;
         } catch (error: any) {
-            console.error("Error accessing microphone", error);
+            console.error("Error accessing media devices", error);
             if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                alert("Microphone permission denied. Please enable it in Settings.");
-            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-                alert("No microphone found on this device.");
-            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-                alert("Microphone is already in use by another app.");
+                alert("Permission denied. Please enable microphone/camera.");
             } else {
-                alert(`Microphone Error: ${error.name} - ${error.message}`);
+                alert(`Media Error: ${error.name} - ${error.message}`);
             }
             return null;
         }
@@ -83,14 +90,20 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
         await supabase.channel(`chat:${chatId}`).send({
             type: 'broadcast',
             event: 'signal',
-            payload: { ...payload, senderId: user.id, senderName: user.user_metadata?.full_name || 'User' }
+            payload: {
+                ...payload,
+                senderId: user.id,
+                senderName: user.user_metadata?.full_name || 'User',
+                senderAvatar: user.user_metadata?.avatar_url
+            }
         });
     };
 
-    const startCall = async () => {
-        const stream = await getLocalStream();
+    const startCall = async (video: boolean = false) => {
+        const stream = await getLocalStream(video);
         if (!stream) return;
 
+        setIsVideoCall(video);
         setCallState('outgoing');
         const pc = createPeerConnection();
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -98,14 +111,15 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        await sendSignal({ type: 'offer', sdp: offer });
+        await sendSignal({ type: 'offer', sdp: offer, isVideo: video });
 
         // Log Call Start
         if (chatId && user) {
-            const { data, error } = await supabase.from('call_logs').insert({
+            const { data } = await supabase.from('call_logs').insert({
                 chat_id: chatId,
                 caller_id: user.id,
-                status: 'missed' // Default until answered/ended
+                status: 'missed',
+                type: video ? 'video' : 'audio' // Ensure DB has 'type' col or ignore if not strict
             }).select().single();
 
             if (data) {
@@ -116,46 +130,42 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
     };
 
     const answerCall = async () => {
-        const stream = await getLocalStream();
+        // Answer with same video capability as offer? Or user choice?
+        // Usually if incoming is video, we ask user. For now assume answer accepts video if requested.
+        const stream = await getLocalStream(isVideoCall);
         if (!stream) return;
 
-        const pc = createPeerConnection(); // Should already exist from handleSignal, but safety check
+        const pc = createPeerConnection(); // Should exist
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-        // Create Answer (remote desc should have been set in handleSignal)
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
         await sendSignal({ type: 'answer', sdp: answer });
         setCallState('connected');
-
-        // Note: receiver logic for update call log would happen here if we knew the call ID. 
-        // For simplicity, we might let the caller handle the final status update or rely on triggers.
-        // But better: Caller listens for 'answer' and updates status to 'completed' (or 'active').
-        // We'll update status to 'completed' (meaning connected) on the caller side when they receive 'answer'.
     };
 
     const handleSignal = async (payload: any) => {
-        if (payload.senderId === user?.id) return; // Ignore own signals
+        if (payload.senderId === user?.id) return;
+
+        // If specific user target needed, check here. For now broadcast to chat room.
 
         const pc = peerConnection.current || createPeerConnection();
 
         try {
             if (payload.type === 'offer') {
                 setCallState('incoming');
+                setIsVideoCall(payload.isVideo || false);
                 setCallerInfo({
                     id: payload.senderId,
                     name: payload.senderName,
                     avatar: payload.senderAvatar || ''
                 });
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-                // We could grab callId from payload if sent, but for now we won't log 'received' calls strictly unless answered.
             } else if (payload.type === 'answer') {
                 if (callState === 'outgoing') {
                     await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
                     setCallState('connected');
-
-                    // Update Log to 'completed' (connected)
                     if (callId) {
                         await supabase.from('call_logs').update({ status: 'completed' }).eq('id', callId);
                     }
@@ -177,7 +187,6 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
             sendSignal({ type: 'hangup' });
         }
 
-        // Log End
         if (callId && startTimeRef.current) {
             const duration = Math.round((Date.now() - startTimeRef.current) / 1000);
             await supabase.from('call_logs').update({
@@ -186,31 +195,40 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
             }).eq('id', callId);
         }
 
-        // Reset refs
         startTimeRef.current = null;
         setCallId(null);
+        setRemoteStream(null);
 
-        if (remoteAudioRef.current) {
-            remoteAudioRef.current.srcObject = null;
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+            localStreamRef.current = null;
         }
-        if (localStream.current) {
-            localStream.current.getTracks().forEach(track => track.stop());
-            localStream.current = null;
-        }
+        setLocalStream(null); // Clear state
+
         if (peerConnection.current) {
             peerConnection.current.close();
             peerConnection.current = null;
         }
         setCallState('idle');
         setCallerInfo(null);
+        setIsVideoCall(false);
     };
 
     const toggleMute = () => {
-        if (localStream.current) {
-            localStream.current.getAudioTracks().forEach(track => {
-                track.enabled = !isMuted;
+        if (localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach(track => {
+                track.enabled = isMuted;
             });
             setIsMuted(!isMuted);
+        }
+    };
+
+    const toggleVideo = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getVideoTracks().forEach(track => {
+                track.enabled = !isVideoEnabled;
+            });
+            setIsVideoEnabled(!isVideoEnabled);
         }
     };
 
@@ -218,10 +236,15 @@ export const useWebRTC = (user: any, chatId: string | undefined) => {
         callState,
         callerInfo,
         isMuted,
+        isVideoEnabled,
+        isVideoCall,
+        localStream,
+        remoteStream,
         startCall,
         answerCall,
         endCall,
         handleSignal,
-        toggleMute
+        toggleMute,
+        toggleVideo
     };
 };
