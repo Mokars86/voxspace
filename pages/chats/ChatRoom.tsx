@@ -14,6 +14,7 @@ import { cn } from '../../lib/utils';
 import {
     ArrowLeft, Phone, Video, MoreVertical, Loader2, Clock, Trash2, Pin, ChevronDown, User, Image as ImageIcon, Ban, ShieldAlert
 } from 'lucide-react';
+import { useNotifications } from '../../context/NotificationContext';
 
 interface Message extends ChatMessage {
     // Extended properties if needed, currently matching ChatMessage
@@ -33,6 +34,7 @@ const ChatRoom = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { chatWallpaper } = useTheme();
+    const { sentMessageSound } = useNotifications();
 
     // State
     const [messages, setMessages] = useState<Message[]>([]);
@@ -298,7 +300,22 @@ const ChatRoom = () => {
                 isPinned: newMsgRaw.is_pinned
             };
 
-            setMessages(prev => [...prev, newMsg]);
+            setMessages(prev => {
+                // Deduplicate based on ID
+                if (prev.some(m => m.id === newMsg.id)) return prev;
+
+                // Deduplicate based on optimistic update (tempId)
+                if (newMsg.metadata?.tempId) {
+                    const idx = prev.findIndex(m => m.id === newMsg.metadata.tempId);
+                    if (idx !== -1) {
+                        const newArr = [...prev];
+                        newArr[idx] = newMsg;
+                        return newArr;
+                    }
+                }
+
+                return [...prev, newMsg];
+            });
             scrollToBottom();
 
             // Cache
@@ -382,6 +399,50 @@ const ChatRoom = () => {
             return;
         }
 
+        const tempId = `temp-${Date.now()}`;
+        const finalMetadata = { ...metadata, duration, tempId }; // Include tempId for simple dedupe
+
+        if (replyTo) {
+            finalMetadata.replyTo = {
+                id: replyTo.id,
+                text: replyTo.text,
+                sender: replyTo.sender
+            };
+        }
+
+        const expiresAt = chatTimer > 0 ? new Date(Date.now() + chatTimer * 1000).toISOString() : null;
+
+        // Optimistic Update
+        const optimisticMsg: Message = {
+            id: tempId,
+            text: content,
+            sender: 'me',
+            time: "Now",
+            type: type,
+            status: 'sent',
+            mediaUrl: file ? URL.createObjectURL(file) : '', // Preview local file if exists
+            metadata: finalMetadata,
+            isPinned: false,
+            reactions: {},
+            expiresAt: expiresAt || undefined,
+            // Add other necessary fields with defaults
+            isDeleted: false,
+            isViewed: false,
+            viewOnce: metadata?.viewOnce || false
+        };
+
+        // If it's a file but not uploaded yet, the mediaUrl is local Blob
+        // This works for preview, but MessageBubble might need to handle Blob URLs (it usually does)
+
+        setMessages(prev => [...prev, optimisticMsg]);
+        scrollToBottom();
+        setReplyTo(null);
+
+        // Play Sound Immediately
+        if (sentMessageSound && sentMessageSound !== 'none') {
+            new Audio(`/sounds/${sentMessageSound}.mp3`).play().catch(e => console.error("Sound play failed", e));
+        }
+
         try {
             let mediaUrl = '';
             if (file) {
@@ -394,18 +455,10 @@ const ChatRoom = () => {
 
                 const { data } = supabase.storage.from('chat-attachments').getPublicUrl(fileName);
                 mediaUrl = data.publicUrl;
-            }
 
-            const finalMetadata = { ...metadata, duration };
-            if (replyTo) {
-                finalMetadata.replyTo = {
-                    id: replyTo.id,
-                    text: replyTo.text,
-                    sender: replyTo.sender
-                };
+                // Update optimistic message with real URL if needed, though usually we wait for real message
+                // However, we send the REAL mediaUrl to DB.
             }
-
-            const expiresAt = chatTimer > 0 ? new Date(Date.now() + chatTimer * 1000).toISOString() : null;
 
             const { error } = await supabase.from('messages').insert({
                 chat_id: chatId,
@@ -417,12 +470,17 @@ const ChatRoom = () => {
                 expires_at: expiresAt
             });
 
-            if (error) throw error;
-            setReplyTo(null);
+            if (error) {
+                // Mark optimistic message as failed?
+                // For now, just throw and let catch handle it
+                throw error;
+            }
 
         } catch (e) {
             console.error("Send failed", e);
             alert("Failed to send message");
+            // Remove optimistic message on failure
+            setMessages(prev => prev.filter(m => m.id !== tempId));
         }
     };
 
@@ -605,9 +663,54 @@ const ChatRoom = () => {
         }
     };
 
+    const handleSaveToBag = async (msg: ChatMessage) => {
+        if (!user) return;
+        try {
+            const newItem: any = {
+                user_id: user.id,
+                type: msg.type === 'text' ? 'message' : msg.type, // Map text to message or note? Let's use message for saved chats
+                content: msg.type === 'text' ? msg.text : (msg.mediaUrl || ''),
+                title: `Saved Message from ${msg.sender === 'me' ? 'Me' : (chatProfile?.full_name || 'Chat')}`,
+                metadata: {
+                    original_chat_id: chatId,
+                    original_sender: msg.sender,
+                    timestamp: msg.time
+                },
+                category: msg.type === 'text' ? 'messages' : 'media', // Simple categorization
+                is_locked: false // Default
+            };
+
+            // 1. Save to Supabase
+            const { data, error } = await supabase.from('my_bag_items').insert(newItem).select().single();
+
+            if (error) {
+                // Fallback to local ID generation if offline?
+                // For now, assume online or throw.
+                console.error("Supabase save failed", error);
+                // If offline, we could save to Dexie with a temp ID and sync later.
+                // Let's at least save to Dexie:
+                newItem.id = `local-${Date.now()}`;
+                newItem.created_at = new Date().toISOString();
+                await db.my_bag.add(newItem);
+                alert("Saved to Bag (Offline)");
+                return;
+            }
+
+            // 2. Save to Dexie Sync
+            if (data) {
+                await db.my_bag.put(data);
+                alert("Saved to My Bag 🔒");
+            }
+        } catch (e) {
+            console.error("Save to bag failed", e);
+            alert("Failed to save item");
+        }
+    };
+
     return (
         <ErrorBoundary>
             <div className={cn("flex flex-col h-[100dvh] w-full max-w-full bg-[#f0f2f5] dark:bg-black transition-transform fixed inset-0 overflow-hidden", isBuzzing && "animate-shake")}>
+
                 {/* Menu Backdrop */}
                 {isMenuOpen && (
                     <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsMenuOpen(false)} />
@@ -761,6 +864,7 @@ const ChatRoom = () => {
                                     onPin={handlePinMessage}
                                     onMediaClick={(url, type) => setPreviewMedia({ url, type: type as 'image' | 'video' })}
                                     onViewOnce={handleViewOnce}
+                                    onSaveToBag={handleSaveToBag}
                                 />
                             </div>
                         ))}

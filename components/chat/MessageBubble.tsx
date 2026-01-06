@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import { Check, CheckCheck, Play, Pause, File as FileIcon, MapPin, Music, Timer, EyeOff, Lock, Video, Reply } from 'lucide-react';
+import { Check, CheckCheck, Play, Pause, File as FileIcon, MapPin, Music, Timer, EyeOff, Lock, Video, Reply, ShoppingBag } from 'lucide-react';
 
 export interface ChatMessage {
     id: string;
@@ -36,6 +36,7 @@ export interface MessageProps {
     onMediaClick?: (url: string, type: 'image' | 'video') => void;
     onViewOnce?: (msg: ChatMessage) => void;
     onPin?: (msg: ChatMessage) => void;
+    onSaveToBag?: (msg: ChatMessage) => void;
 }
 
 const AudioPlayer = ({ url, isMe, duration: initialDuration, type }: { url: string, isMe: boolean, duration?: number | string, type: string }) => {
@@ -155,7 +156,7 @@ const AudioPlayer = ({ url, isMe, duration: initialDuration, type }: { url: stri
     );
 };
 
-const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact, onLongPress, onEdit, onDelete, onForward, onMediaClick, onViewOnce, onPin }) => {
+const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact, onLongPress, onEdit, onDelete, onForward, onMediaClick, onViewOnce, onPin, onSaveToBag }) => {
     const isMe = message.sender === 'me';
     const [isPlaying, setIsPlaying] = React.useState(false);
     const [showMenu, setShowMenu] = React.useState(false);
@@ -254,6 +255,9 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                             <button onClick={() => setIsEditing(true)} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium">Edit</button>
                         )}
                         <button onClick={() => { onForward && onForward(message); setShowMenu(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium">Forward</button>
+                        <button onClick={() => { onSaveToBag && onSaveToBag(message); setShowMenu(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium flex items-center gap-2">
+                            Save to Bag
+                        </button>
                         {message.type === 'text' && (
                             <button
                                 onClick={() => {

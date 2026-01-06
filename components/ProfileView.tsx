@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Link as LinkIcon, Calendar, Settings, Grid, Image, Heart, Loader2, QrCode, Archive } from 'lucide-react';
+import { MapPin, Link as LinkIcon, Calendar, Settings, Grid, Image, Heart, Loader2, QrCode, Archive, Lock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import PostCard from './PostCard';
 import { Post } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import ImageViewer from './ImageViewer';
 import QRCodeModal from './QRCodeModal';
 
@@ -148,21 +148,29 @@ const ProfileView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex gap-3 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <button
             onClick={() => setShowQRModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
           >
             <QrCode size={18} />
             <span>My QR Code</span>
           </button>
-          <button
-            onClick={() => navigate('/chats', { state: { tab: 'archived' } })}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          <RouterLink
+            to={{ pathname: '/chats', state: { tab: 'archived' } }}
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
           >
             <Archive size={18} />
             <span>Archived</span>
-          </button>
+          </RouterLink>
+
+          <RouterLink
+            to="/my-bag"
+            className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
+          >
+            <Lock size={18} className="text-[#ff1744]" />
+            <span>My Bag</span>
+          </RouterLink>
         </div>
 
         <QRCodeModal isOpen={showQRModal} onClose={() => setShowQRModal(false)} />

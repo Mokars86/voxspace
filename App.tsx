@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import SpaceDetail from './pages/spaces/SpaceDetail';
 import EditProfile from './pages/EditProfile';
 import UserProfile from './pages/UserProfile';
+import MyBag from './pages/my-bag/MyBag';
 import SpaceChatRoom from './pages/spaces/SpaceChatRoom';
 import PrivacySettings from './pages/settings/PrivacySettings';
 import SecuritySettings from './pages/settings/SecuritySettings';
@@ -96,6 +97,7 @@ const App: React.FC = () => {
         <NotificationProvider>
           <CallProvider>
             <Routes>
+              <Route path="/my-bag" element={<ProtectedRoute><MyBag /></ProtectedRoute>} />
               <Route path="/welcome" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
 

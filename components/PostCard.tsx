@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MessageCircle, Repeat, Share, MoreHorizontal, BadgeCheck, Trash2, Edit2, Send, X, Music, MapPin } from 'lucide-react';
+import { Heart, MessageCircle, Repeat, Share, MoreHorizontal, BadgeCheck, Trash2, Edit2, Send, X, Music, MapPin, Lock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Post, Comment } from '../types';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import RepostModal from './RepostModal';
+import { db } from '../services/db';
+import { MyBagItem } from '../types/mybag';
 
 interface PostCardProps {
     post: Post;
@@ -153,6 +155,47 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin, onMediaClick
         } catch (error) {
             console.error("Error deleting post:", error);
             alert("Could not delete post.");
+        }
+    };
+
+    const handleSaveToBag = async () => {
+        if (!user) return;
+        try {
+            const newItem: any = {
+                user_id: user.id,
+                type: post.media ? (post.media_type || 'image') : 'note', // Map post to note if text only
+                content: post.media || post.content,
+                title: `Saved Post from ${post.author.name}`,
+                metadata: {
+                    original_post_id: post.id,
+                    original_author: post.author.name,
+                    timestamp: post.timestamp
+                },
+                category: post.media ? 'media' : 'notes',
+                is_locked: false
+            };
+
+            // 1. Save to Supabase
+            const { data, error } = await supabase.from('my_bag_items').insert(newItem).select().single();
+
+            if (error) {
+                // Offline Fallback
+                newItem.id = `local-${Date.now()}`;
+                newItem.created_at = new Date().toISOString();
+                await db.my_bag.add(newItem);
+                alert("Saved to Bag (Offline)");
+                setMenuOpen(false);
+                return;
+            }
+
+            if (data) {
+                await db.my_bag.put(data);
+                alert("Saved to My Bag 🔒");
+                setMenuOpen(false);
+            }
+        } catch (e) {
+            console.error("Save to bag failed", e);
+            alert("Failed to save item");
         }
     };
 
@@ -319,6 +362,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin, onMediaClick
                                         )}
                                         <button className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 font-medium flex items-center gap-2">
                                             <Share size={14} /> Share
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleSaveToBag(); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 font-medium flex items-center gap-2">
+                                            <Lock size={14} /> Save to My Bag
                                         </button>
                                     </div>
                                 </>
