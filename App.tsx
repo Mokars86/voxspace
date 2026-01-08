@@ -19,6 +19,7 @@ import PrivacySettings from './pages/settings/PrivacySettings';
 import SecuritySettings from './pages/settings/SecuritySettings';
 import AppearanceSettings from './pages/settings/AppearanceSettings';
 import NotificationSettings from './pages/settings/NotificationSettings';
+import DataSettings from './pages/settings/DataSettings';
 import BlockedUsers from './pages/settings/BlockedUsers';
 import { CallProvider } from './context/CallContext';
 
@@ -115,6 +116,7 @@ const App: React.FC = () => {
               <Route path="/settings/privacy" element={<ProtectedRoute><PrivacySettings /></ProtectedRoute>} />
               <Route path="/settings/privacy/blocked" element={<ProtectedRoute><BlockedUsers /></ProtectedRoute>} />
               <Route path="/settings/security" element={<ProtectedRoute><SecuritySettings /></ProtectedRoute>} />
+              <Route path="/settings/data" element={<ProtectedRoute><DataSettings /></ProtectedRoute>} />
               <Route path="/settings/appearance" element={<ProtectedRoute><AppearanceSettings /></ProtectedRoute>} />
               <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
               <Route path="/space/:id" element={<ProtectedRoute><SpaceDetail /></ProtectedRoute>} />

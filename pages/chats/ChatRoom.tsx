@@ -8,6 +8,7 @@ import MessageBubble, { ChatMessage } from '../../components/chat/MessageBubble'
 import ChatInput from '../../components/chat/ChatInput';
 import ForwardModal from '../../components/chat/ForwardModal';
 import CallOverlay from '../../components/chat/CallOverlay';
+import ImageViewer from '../../components/ImageViewer';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { cn } from '../../lib/utils';
@@ -39,10 +40,10 @@ const ChatRoom = () => {
     // State
     const [messages, setMessages] = useState<Message[]>([]);
     const [loading, setLoading] = useState(true);
-    const [chatProfile, setChatProfile] = useState<{ full_name: string; avatar_url: string; username: string } | null>(null);
+    const [chatProfile, setChatProfile] = useState<{ full_name: string; avatar_url: string; username: string; is_online?: boolean; last_seen_at?: string } | null>(null);
     const [replyTo, setReplyTo] = useState<any>(null); // Message to reply to
     const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
-    const [previewMedia, setPreviewMedia] = useState<{ url: string, type: 'image' | 'video' | 'text', content?: string } | null>(null);
+    const [previewMedia, setPreviewMedia] = useState<{ url: string, type: 'image' | 'video' | 'text', content?: string, allUrls?: string[] } | null>(null);
     const [isBuzzing, setIsBuzzing] = useState(false);
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
     const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -56,6 +57,8 @@ const ChatRoom = () => {
         profile_photo_privacy: string;
         about_privacy: string;
     } | null>(null);
+    const [recordingUsers, setRecordingUsers] = useState<Set<string>>(new Set());
+    const [isPartnerOnline, setIsPartnerOnline] = useState(false);
 
     // Call Hook
     const {
@@ -72,7 +75,10 @@ const ChatRoom = () => {
 
     const scrollToBottom = () => {
         if (listRef.current) {
-            listRef.current.scrollTop = listRef.current.scrollHeight;
+            listRef.current.scrollTo({
+                top: listRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
         }
     };
 
@@ -95,50 +101,66 @@ const ChatRoom = () => {
         // Fetch Chat Profile Info
         try {
             // Get the OTHER participant in this chat
-            const { data: participantData } = await supabase
+            // Get all participants to ensure we find the partner
+            const { data: participantsData, error: participantError } = await supabase
                 .from('chat_participants')
                 .select(`
+                    user_id,
                     profiles:user_id (
                         id,
                         full_name,
                         avatar_url,
                         username,
+                        last_seen_at,
                         last_seen_privacy,
                         online_status_privacy,
                         profile_photo_privacy,
                         about_privacy
                     )
                 `)
-                .eq('chat_id', chatId)
-                .neq('user_id', user.id)
-                .single();
+                .eq('chat_id', chatId);
 
-            if (participantData && participantData.profiles) {
-                const profile: any = Array.isArray(participantData.profiles) ? participantData.profiles[0] : participantData.profiles;
-                setChatProfile(profile);
-                setPrivacySettings({
-                    last_seen_privacy: profile.last_seen_privacy || 'everyone',
-                    online_status_privacy: profile.online_status_privacy || 'everyone',
-                    profile_photo_privacy: profile.profile_photo_privacy || 'everyone',
-                    about_privacy: profile.about_privacy || 'everyone',
-                });
+            if (participantError) console.error("Participant fetch error:", participantError);
 
-                // Check Block Status
-                const { data: blockData, error: blockError } = await supabase
-                    .from('blocked_users')
-                    .select('*')
-                    .or(`blocker_id.eq.${user.id},blocker_id.eq.${profile.id}`)
-                    .or(`blocked_id.eq.${user.id},blocked_id.eq.${profile.id}`);
+            if (participantsData) {
+                // Find the other user
+                const otherParticipant = participantsData.find((p: any) => p.user_id !== user.id);
 
-                if (blockData && blockData.length > 0) {
-                    const iBlockedThem = blockData.some(b => b.blocker_id === user.id);
-                    const theyBlockedMe = blockData.some(b => b.blocker_id === profile.id);
+                // If found, or if self-chat (fallback to self)
+                const targetData = otherParticipant || participantsData[0];
 
-                    if (iBlockedThem) setParticipantStatus('blocked');
-                    else if (theyBlockedMe) setParticipantStatus('blocked_by');
-                } else {
-                    setParticipantStatus('accepted');
+                if (targetData && targetData.profiles) {
+                    const profile: any = Array.isArray(targetData.profiles) ? targetData.profiles[0] : targetData.profiles;
+                    console.log("Setting Chat Profile:", profile);
+                    setChatProfile(profile);
+                    setPrivacySettings({
+                        last_seen_privacy: profile.last_seen_privacy || 'everyone',
+                        online_status_privacy: profile.online_status_privacy || 'everyone',
+                        profile_photo_privacy: profile.profile_photo_privacy || 'everyone',
+                        about_privacy: profile.about_privacy || 'everyone',
+                    });
+
+                    // Check Block Status
+                    const { data: blockData } = await supabase
+                        .from('blocked_users')
+                        .select('*')
+                        .or(`blocker_id.eq.${user.id},blocker_id.eq.${profile.id}`)
+                        .or(`blocked_id.eq.${user.id},blocked_id.eq.${profile.id}`);
+
+                    if (blockData && blockData.length > 0) {
+                        const iBlockedThem = blockData.some(b => b.blocker_id === user.id);
+                        const theyBlockedMe = blockData.some(b => b.blocker_id === profile.id);
+
+                        if (iBlockedThem) setParticipantStatus('blocked');
+                        else if (theyBlockedMe) setParticipantStatus('blocked_by');
+                    } else {
+                        setParticipantStatus('accepted');
+                    }
                 }
+            } else {
+                console.warn("No participant profile found");
+                // Fallback?
+                // setChatProfile({ full_name: "Unknown", avatar_url: "", username: "unknown" });
             }
         } catch (e) {
             console.error("Error fetching chat profile", e);
@@ -267,14 +289,15 @@ const ChatRoom = () => {
         return () => clearTimeout(timer);
     }, [loading]);
 
+    const channelRef = useRef<any>(null);
+
     // Realtime & Effects
     useEffect(() => {
         fetchMessages().then(() => markMessagesAsRead()); // Mark read after initial fetch
 
-        if (!chatId) return;
+        if (!chatId || !user) return;
 
         const handleNewMessage = (newMsgRaw: any) => {
-            // Check for Buzz
             // Check for Buzz
             if (newMsgRaw.type === 'buzz') {
                 setIsBuzzing(true);
@@ -283,7 +306,7 @@ const ChatRoom = () => {
             }
 
             // Mark incoming message as read since we are in the room
-            if (newMsgRaw.sender_id !== user?.id) {
+            if (newMsgRaw.sender_id !== user.id) {
                 markMessagesAsRead();
             }
 
@@ -291,7 +314,7 @@ const ChatRoom = () => {
             const newMsg: Message = {
                 id: newMsgRaw.id,
                 text: newMsgRaw.content,
-                sender: newMsgRaw.sender_id === user?.id ? 'me' : 'them',
+                sender: newMsgRaw.sender_id === user.id ? 'me' : 'them',
                 time: safeDate(newMsgRaw.created_at),
                 type: newMsgRaw.type || 'text',
                 status: 'read',
@@ -367,7 +390,7 @@ const ChatRoom = () => {
                 (payload) => handleMessageUpdate(payload.new)
             )
             .on('broadcast', { event: 'typing' }, (payload) => {
-                if (payload.payload.userId !== user?.id) {
+                if (payload.payload.userId !== user.id) {
                     setTypingUsers(prev => new Set(prev).add(payload.payload.username || "Someone"));
                     setTimeout(() => {
                         setTypingUsers(prev => {
@@ -378,10 +401,53 @@ const ChatRoom = () => {
                     }, 3000);
                 }
             })
-            .subscribe();
+            .on('broadcast', { event: 'recording' }, (payload) => {
+                const { userId, username, isRecording } = payload.payload;
+                if (userId !== user.id) {
+                    setRecordingUsers(prev => {
+                        const next = new Set(prev);
+                        if (isRecording) next.add(username || "Someone");
+                        else next.delete(username || "Someone");
+                        return next;
+                    });
+                }
+            })
+            .on('presence', { event: 'sync' }, () => {
+                const state = channel.presenceState();
+                // Check if other participant is online
+                // We don't have the other user's ID directly in logic easily without `chatProfile`
+                // But `chatProfile` is state.
+                // Simpler: Check if ANYONE else is in the room. 
+                // However, presenceState keys are usually random user session IDs.
+                // We need to look at the values.
+
+                let onlineFound = false;
+                for (const key in state) {
+                    const presences = state[key] as any[];
+                    presences.forEach(p => {
+                        if (p.user_id !== user.id) {
+                            onlineFound = true;
+                        }
+                    });
+                }
+
+                if (onlineFound) {
+                    setIsPartnerOnline(true);
+                } else {
+                    setIsPartnerOnline(false);
+                }
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await channel.track({ user_id: user.id, online_at: new Date().toISOString() });
+                }
+            });
+
+        channelRef.current = channel;
 
         return () => {
             supabase.removeChannel(channel);
+            channelRef.current = null;
         };
     }, [chatId, user?.id]);
 
@@ -392,7 +458,7 @@ const ChatRoom = () => {
 
 
     // Handlers
-    const handleSend = async (content: string, type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'buzz' | 'location' | 'audio', file?: File, duration?: number, metadata?: any) => {
+    const handleSend = async (content: string, type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'buzz' | 'location' | 'audio' | 'contact', files?: File | File[], duration?: number, metadata?: any) => {
         if (!user || !chatId) return;
         if (participantStatus === 'blocked' || participantStatus === 'blocked_by') {
             alert("Cannot send message. User is blocked or has blocked you.");
@@ -400,7 +466,7 @@ const ChatRoom = () => {
         }
 
         const tempId = `temp-${Date.now()}`;
-        const finalMetadata = { ...metadata, duration, tempId }; // Include tempId for simple dedupe
+        const finalMetadata = { ...metadata, duration, tempId };
 
         if (replyTo) {
             finalMetadata.replyTo = {
@@ -412,6 +478,11 @@ const ChatRoom = () => {
 
         const expiresAt = chatTimer > 0 ? new Date(Date.now() + chatTimer * 1000).toISOString() : null;
 
+        // Handle Array of Files
+        const fileList = Array.isArray(files) ? files : (files ? [files] : []);
+        let mediaUrls: string[] = [];
+        let singleMediaUrl = '';
+
         // Optimistic Update
         const optimisticMsg: Message = {
             id: tempId,
@@ -420,44 +491,43 @@ const ChatRoom = () => {
             time: "Now",
             type: type,
             status: 'sent',
-            mediaUrl: file ? URL.createObjectURL(file) : '', // Preview local file if exists
+            mediaUrl: fileList.length > 0 ? URL.createObjectURL(fileList[0]) : '', // Primary preview
+            mediaUrls: fileList.map(f => URL.createObjectURL(f)), // All previews
             metadata: finalMetadata,
             isPinned: false,
             reactions: {},
             expiresAt: expiresAt || undefined,
-            // Add other necessary fields with defaults
             isDeleted: false,
             isViewed: false,
             viewOnce: metadata?.viewOnce || false
         };
 
-        // If it's a file but not uploaded yet, the mediaUrl is local Blob
-        // This works for preview, but MessageBubble might need to handle Blob URLs (it usually does)
-
         setMessages(prev => [...prev, optimisticMsg]);
         scrollToBottom();
         setReplyTo(null);
 
-        // Play Sound Immediately
         if (sentMessageSound && sentMessageSound !== 'none') {
             new Audio(`/sounds/${sentMessageSound}.mp3`).play().catch(e => console.error("Sound play failed", e));
         }
 
         try {
-            let mediaUrl = '';
-            if (file) {
-                const ext = file.name.split('.').pop();
-                const fileName = `chat_${chatId}/${Date.now()}.${ext}`;
-                const { error: uploadError } = await supabase.storage
-                    .from('chat-attachments')
-                    .upload(fileName, file);
-                if (uploadError) throw uploadError;
+            // Upload Loop
+            if (fileList.length > 0) {
+                const uploadPromises = fileList.map(async (file) => {
+                    const ext = file.name.split('.').pop();
+                    const fileName = `chat_${chatId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+                    const { error: uploadError } = await supabase.storage
+                        .from('chat-attachments')
+                        .upload(fileName, file);
 
-                const { data } = supabase.storage.from('chat-attachments').getPublicUrl(fileName);
-                mediaUrl = data.publicUrl;
+                    if (uploadError) throw uploadError;
 
-                // Update optimistic message with real URL if needed, though usually we wait for real message
-                // However, we send the REAL mediaUrl to DB.
+                    const { data } = supabase.storage.from('chat-attachments').getPublicUrl(fileName);
+                    return data.publicUrl;
+                });
+
+                mediaUrls = await Promise.all(uploadPromises);
+                singleMediaUrl = mediaUrls[0];
             }
 
             const { error } = await supabase.from('messages').insert({
@@ -465,21 +535,16 @@ const ChatRoom = () => {
                 sender_id: user.id,
                 content: content,
                 type: type,
-                media_url: mediaUrl,
+                media_url: singleMediaUrl, // Backwards compatibility / primary image
                 metadata: finalMetadata,
                 expires_at: expiresAt
             });
 
-            if (error) {
-                // Mark optimistic message as failed?
-                // For now, just throw and let catch handle it
-                throw error;
-            }
+            if (error) throw error;
 
-        } catch (e) {
-            console.error("Send failed", e);
-            alert("Failed to send message");
-            // Remove optimistic message on failure
+        } catch (e: any) {
+            console.error("Send failed:", e);
+            alert(`Failed to send message: ${e.message || e.toString()}`);
             setMessages(prev => prev.filter(m => m.id !== tempId));
         }
     };
@@ -552,28 +617,61 @@ const ChatRoom = () => {
     };
 
     const handleDeleteMessage = async (msgId: string) => {
+        // Optimistic Update
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isDeleted: true } : m));
+
         try {
             await supabase.from('messages').update({ is_deleted: true }).eq('id', msgId);
-        } catch (e) { console.error("Delete failed", e); }
+            await db.messages.update(msgId, { is_deleted: true });
+        } catch (e) {
+            console.error("Delete failed", e);
+            // Revert (hard to revert delete perfectly without knowing old state, but typically network doesn't fail often here.
+            // A refresher would be needed or just alert user.)
+            alert("Failed to delete message");
+            // Ideally we'd rollback state here, but for simple delete we might skip complex rollback logic for now
+        }
     };
 
     const handleEditMessage = async (msgId: string, newText: string) => {
+        const oldMessage = messages.find(m => m.id === msgId);
+
+        if (!oldMessage) return;
+
+        // Optimistic Update
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: newText, isEdited: true } : m));
+
         try {
             await supabase.from('messages').update({ content: newText, is_edited: true }).eq('id', msgId);
-        } catch (e) { console.error("Edit failed", e); }
+            await db.messages.update(msgId, { content: newText }); // Cache update
+        } catch (e) {
+            console.error("Edit failed", e);
+            alert("Failed to edit message");
+            // Revert
+            setMessages(prev => prev.map(m => m.id === msgId ? oldMessage : m));
+        }
     };
 
     const handleTyping = () => {
         // Throttle
-        if (!typingTimeoutRef.current && chatId && user) {
-            supabase.channel(`chat:${chatId}`).send({
+        if (!typingTimeoutRef.current && chatId && user && channelRef.current) {
+            channelRef.current.send({
                 type: 'broadcast',
                 event: 'typing',
-                payload: { userId: user.id, username: user.user_metadata?.full_name }
+                payload: { userId: user.id, username: (user as any).user_metadata?.full_name }
             });
             typingTimeoutRef.current = setTimeout(() => {
                 typingTimeoutRef.current = null;
             }, 2000);
+        }
+    };
+
+    const handleRecording = (isRecording: boolean) => {
+        if (chatId && user && channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'recording',
+                payload: { userId: user.id, username: (user as any).user_metadata?.full_name, isRecording }
+            });
         }
     };
 
@@ -766,7 +864,11 @@ const ChatRoom = () => {
                                         </span>
                                     ) : (
                                         privacySettings?.online_status_privacy !== 'nobody' && (
-                                            <span className="text-xs text-green-500">Online</span>
+                                            isPartnerOnline ? (
+                                                <span className="text-xs text-green-500">Online</span>
+                                            ) : (
+                                                <span className="text-xs font-bold text-[#ff1744]">Offline</span>
+                                            )
                                         )
                                     )}
                                 </div>
@@ -885,12 +987,23 @@ const ChatRoom = () => {
 
                     {/* Input Area */}
                     {!loading && participantStatus === 'accepted' ? (
-                        <ChatInput
-                            onSend={handleSend}
-                            onTyping={handleTyping}
-                            replyTo={replyTo}
-                            onCancelReply={() => setReplyTo(null)}
-                        />
+                        <div className="w-full bg-white dark:bg-gray-900">
+                            {recordingUsers.size > 0 && (
+                                <div className="px-4 py-1 animate-in slide-in-from-bottom-2 fade-in bg-white dark:bg-gray-900 border-t border-gray-50 dark:border-gray-800">
+                                    <span className="text-xs font-bold text-[#ff1744] animate-pulse flex items-center gap-2">
+                                        <div className="w-2 h-2 bg-[#ff1744] rounded-full animate-ping" />
+                                        {Array.from(recordingUsers).join(', ')} is recording voice...
+                                    </span>
+                                </div>
+                            )}
+                            <ChatInput
+                                onSend={handleSend}
+                                onTyping={handleTyping}
+                                onRecording={handleRecording}
+                                replyTo={replyTo}
+                                onCancelReply={() => setReplyTo(null)}
+                            />
+                        </div>
                     ) : !loading && (
                         <div className="p-6 bg-white border-t border-gray-200 text-center safe-bottom">
                             <p className="text-gray-500">
@@ -915,41 +1028,45 @@ const ChatRoom = () => {
                 {/* Media Preview Modal */}
                 {
                     previewMedia && (
-                        <div
-                            className="fixed inset-0 z-[60] bg-black flex items-center justify-center animate-in fade-in duration-200"
-                            onClick={() => setPreviewMedia(null)}
-                        >
-                            <button className="absolute top-4 right-4 text-white p-2 rounded-full bg-black/50 hover:bg-black/70">
-                                <ArrowLeft size={24} />
-                            </button>
-                            {previewMedia.type === 'video' ? (
-                                <video
-                                    src={previewMedia.url}
-                                    controls
-                                    autoPlay
-                                    className="max-w-full max-h-screen"
-                                    onClick={(e) => e.stopPropagation()}
-                                />
-                            ) : previewMedia.type === 'text' ? (
-                                <div
-                                    className="bg-white dark:bg-gray-900 p-8 rounded-2xl max-w-lg w-full m-4 text-center shadow-2xl relative"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <div className="mb-4 text-gray-500 font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2">
-                                        <Clock size={16} /> View Once Message
+                        previewMedia.type === 'image' ? (
+                            <ImageViewer
+                                isOpen={!!previewMedia}
+                                onClose={() => setPreviewMedia(null)}
+                                src={previewMedia.url}
+                                images={previewMedia.allUrls}
+                                alt="Preview"
+                            />
+                        ) : (
+                            <div
+                                className="fixed inset-0 z-[60] bg-black flex items-center justify-center animate-in fade-in duration-200"
+                                onClick={() => setPreviewMedia(null)}
+                            >
+                                <button className="absolute top-4 right-4 text-white p-2 rounded-full bg-black/50 hover:bg-black/70">
+                                    <ArrowLeft size={24} />
+                                </button>
+                                {previewMedia.type === 'video' ? (
+                                    <video
+                                        src={previewMedia.url}
+                                        controls
+                                        autoPlay
+                                        className="max-w-full max-h-screen"
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    <div
+                                        className="bg-white dark:bg-gray-900 p-8 rounded-2xl max-w-lg w-full m-4 text-center shadow-2xl relative"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <div className="mb-4 text-gray-500 font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2">
+                                            <Clock size={16} /> View Once Message
+                                        </div>
+                                        <p className="text-xl md:text-2xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed whitespace-pre-wrap">
+                                            {previewMedia.content}
+                                        </p>
                                     </div>
-                                    <p className="text-xl md:text-2xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed whitespace-pre-wrap">
-                                        {previewMedia.content}
-                                    </p>
-                                </div>
-                            ) : (
-                                <img
-                                    src={previewMedia.url}
-                                    className="max-w-full max-h-screen object-contain"
-                                    alt="Preview"
-                                />
-                            )}
-                        </div>
+                                )}
+                            </div>
+                        )
                     )
                 }
                 {/* Timer Modal */}

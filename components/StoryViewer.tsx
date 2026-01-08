@@ -40,7 +40,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
                 .select(`
                     user_id,
                     created_at,
-                    profiles:user_id (
+                    profiles (
                         full_name, avatar_url, username
                     )
                 `)
@@ -165,7 +165,11 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
 
     const handleLike = async () => {
         if (!currentStory || !user) return;
+        if (liked) return; // Prevent double like locally
+
         setLiked(true);
+        setStoryLikesCount(prev => prev + 1); // Optimistic update
+
         try {
             const { error } = await supabase
                 .from('story_interactions')
@@ -178,6 +182,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ stories, initialIndex, onClos
         } catch (e) {
             console.error(e);
             setLiked(false);
+            setStoryLikesCount(prev => Math.max(0, prev - 1)); // Rollback
         }
     };
 

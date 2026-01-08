@@ -23,6 +23,28 @@ const BagSettingsModal: React.FC<BagSettingsModalProps> = ({ isOpen, onClose, on
         }
     };
 
+    const handleExport = async () => {
+        try {
+            const items = await db.my_bag.toArray();
+            const dataStr = JSON.stringify(items, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `my-bag-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert(`Exported ${items.length} items successfully!`);
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Export failed. Please try again.");
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -63,13 +85,16 @@ const BagSettingsModal: React.FC<BagSettingsModalProps> = ({ isOpen, onClose, on
                         </div>
                     </button>
 
-                    <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left opacity-50 cursor-not-allowed">
+                    <button
+                        onClick={handleExport}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+                    >
                         <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg">
                             <Download size={20} />
                         </div>
                         <div>
                             <div className="font-semibold dark:text-gray-200">Export / Backup</div>
-                            <div className="text-xs text-gray-500">Coming soon</div>
+                            <div className="text-xs text-gray-500">Download data as JSON</div>
                         </div>
                     </button>
 

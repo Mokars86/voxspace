@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MessageCircle, Repeat, Share, MoreHorizontal, BadgeCheck, Trash2, Edit2, Send, X, Music, MapPin, Lock } from 'lucide-react';
+import { Heart, MessageCircle, Repeat, Share, MoreHorizontal, BadgeCheck, Trash2, Edit2, Send, X, Music, MapPin, Lock, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Post, Comment } from '../types';
 import { supabase } from '../services/supabase';
@@ -346,7 +346,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin, onMediaClick
                             {menuOpen && (
                                 <>
                                     <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
-                                    <div className="absolute right-0 top-8 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 w-32 overflow-hidden py-1 animate-in zoom-in-95 duration-100 origin-top-right">
+                                    <div className="absolute right-0 top-8 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 w-48 overflow-hidden py-1 animate-in zoom-in-95 duration-100 origin-top-right">
                                         {isAuthor && (
                                             <>
                                                 <button onClick={(e) => { e.stopPropagation(); onDelete && onDelete(post.id); }} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 font-medium flex items-center gap-2">
@@ -366,6 +366,18 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin, onMediaClick
                                         <button onClick={(e) => { e.stopPropagation(); handleSaveToBag(); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 font-medium flex items-center gap-2">
                                             <Lock size={14} /> Save to My Bag
                                         </button>
+                                        {post.media && (post.media_type === 'image' || !post.media_type) && (
+                                            <a
+                                                href={post.media}
+                                                download={`voxspace_post_${post.id}.jpg`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 font-medium flex items-center gap-2"
+                                            >
+                                                <Download size={14} /> Download
+                                            </a>
+                                        )}
                                     </div>
                                 </>
                             )}

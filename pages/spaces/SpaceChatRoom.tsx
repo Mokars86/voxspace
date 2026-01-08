@@ -159,7 +159,21 @@ export const SpaceChatRoomContent: React.FC = () => {
                     senderAvatar: senderData?.avatar_url
                 };
 
-                setMessages(prev => [...prev, newMsg]);
+                setMessages(prev => {
+                    // Deduplicate by ID
+                    if (prev.some(m => m.id === newMsg.id)) return prev;
+
+                    // Deduplicate by tempId (Optimistic Update)
+                    if (newMsg.metadata?.tempId) {
+                        const idx = prev.findIndex(m => m.id === newMsg.metadata.tempId);
+                        if (idx !== -1) {
+                            const newArr = [...prev];
+                            newArr[idx] = newMsg;
+                            return newArr;
+                        }
+                    }
+                    return [...prev, newMsg];
+                });
                 setTimeout(scrollToBottom, 100);
             })
             .subscribe();
@@ -191,14 +205,32 @@ export const SpaceChatRoomContent: React.FC = () => {
             return;
         }
 
+        const tempId = `temp-${Date.now()}`;
+
+        // Optimistic UI Update
+        const optimisticMsg: SpaceMessage = {
+            id: tempId,
+            text: content,
+            sender: 'me',
+            time: "Now",
+            type: type,
+            status: 'sending',
+            mediaUrl: file ? URL.createObjectURL(file) : '', // Preview local
+            metadata: metadata || {},
+            sender_id: user.id,
+            senderName: user.user_metadata?.full_name || 'Me',
+            senderAvatar: user.user_metadata?.avatar_url
+        };
+
+        setMessages(prev => [...prev, optimisticMsg]);
+        setTimeout(scrollToBottom, 100);
+
         try {
             let mediaUrl = '';
 
             if (file) {
                 const ext = file.name.split('.').pop();
                 const fileName = `space_${id}/${Date.now()}.${ext}`;
-                // Reusing chat-attachments bucket for simplicity or create 'space-attachments'
-                // Let's use 'chat-attachments' as verified
                 const { error: uploadError } = await supabase.storage
                     .from('chat-attachments')
                     .upload(fileName, file);
@@ -217,13 +249,15 @@ export const SpaceChatRoomContent: React.FC = () => {
                     content: content,
                     type: type,
                     media_url: mediaUrl,
-                    metadata: metadata
+                    metadata: { ...metadata, tempId }
                 });
 
             if (error) throw error;
         } catch (error) {
             console.error("Error sending message:", error);
             alert("Message failed to send.");
+            // Remove optimistic message
+            setMessages(prev => prev.filter(m => m.id !== tempId));
         }
     };
 

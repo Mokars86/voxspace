@@ -68,7 +68,9 @@ const Settings: React.FC = () => {
                     </SettingsSection>
 
                     <SettingsSection title="Data">
-                        <SettingsItem icon={<Database size={20} />} label="Data Usage" />
+                        <div onClick={() => navigate('/settings/data')}>
+                            <SettingsItem icon={<Database size={20} />} label="Data Usage" />
+                        </div>
                     </SettingsSection>
 
                     <button

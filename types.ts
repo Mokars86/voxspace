@@ -69,6 +69,7 @@ export interface ChatPreview {
   isGroup?: boolean;
   status?: 'accepted' | 'pending' | 'rejected' | 'blocked';
   isPinned?: boolean;
+  isLocked?: boolean;
 }
 
 

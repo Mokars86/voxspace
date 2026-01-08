@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PenLine, Image as ImageIcon, Sparkles, Loader2, X } from 'lucide-react';
+import { PenLine, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import PostCard from './PostCard';
 import StoryBar from './StoryBar';
 import ImageViewer from './ImageViewer';
@@ -18,8 +18,9 @@ const FeedView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Media Upload State
+  const [selectedMedia, setSelectedMedia] = useState<{ file: File, type: 'image' | 'video' } | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -47,6 +48,7 @@ const FeedView: React.FC = () => {
             ),
             post_likes(user_id)
         `)
+        .is('space_id', null) // Filter out space posts
         .order('created_at', { ascending: false });
 
       if (activeTab === 'following' && user) {
@@ -111,7 +113,8 @@ const FeedView: React.FC = () => {
         media: item.media_url,
         media_type: item.media_type,
         location: item.location,
-        isLiked: user ? item.post_likes?.some((l: any) => l.user_id === user.id) : false
+        isLiked: user ? item.post_likes?.some((l: any) => l.user_id === user.id) : false,
+        is_pinned: item.is_pinned
       }));
 
       setPosts(formattedPosts);
@@ -122,36 +125,64 @@ const FeedView: React.FC = () => {
     }
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setSelectedImage(file);
+      const type = file.type.startsWith('video/') ? 'video' : 'image';
+      setSelectedMedia({ file, type });
       const url = URL.createObjectURL(file);
-      setImagePreview(url);
+      setMediaPreview(url);
     }
   };
 
-  const removeImage = () => {
-    setSelectedImage(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview(null);
+  const removeMedia = () => {
+    setSelectedMedia(null);
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    setMediaPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleCreatePost = async () => {
-    if ((!newPostContent.trim() && !selectedImage) || !user) return;
+    if ((!newPostContent.trim() && !selectedMedia) || !user) return;
     setIsPosting(true);
+
+    // Optimistic Post
+    const tempId = `temp-${Date.now()}`;
+    const optimisticPost: Post = {
+      id: tempId,
+      author: {
+        id: user.id,
+        name: user.user_metadata?.full_name || 'Me',
+        username: user.user_metadata?.username || 'me',
+        avatar: user.user_metadata?.avatar_url || '',
+        isVerified: false
+      },
+      content: newPostContent.trim(),
+      timestamp: "Just now",
+      likes: 0,
+      comments: 0,
+      reposts: 0,
+      media: mediaPreview ? mediaPreview : undefined,
+      media_type: selectedMedia?.type || undefined,
+      location: null,
+      isLiked: false
+    };
+
+    setPosts(prev => [optimisticPost, ...prev]);
+    setNewPostContent('');
+    removeMedia(); // Clear UI immediately
+
     try {
       let mediaUrl = null;
 
-      // Upload Image
-      if (selectedImage) {
-        const fileExt = selectedImage.name.split('.').pop();
+      // Upload Media
+      if (selectedMedia) {
+        const fileExt = selectedMedia.file.name.split('.').pop();
         const fileName = `${user.id}/${Math.random()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from('post_media')
-          .upload(fileName, selectedImage);
+          .upload(fileName, selectedMedia.file);
 
         if (uploadError) throw uploadError;
 
@@ -162,24 +193,20 @@ const FeedView: React.FC = () => {
         mediaUrl = publicUrl;
       }
 
-      const { error } = await supabase.from('posts').insert({
+      const { data, error } = await supabase.from('posts').insert({
         user_id: user.id,
-        content: newPostContent.trim(),
+        content: optimisticPost.content,
         media_url: mediaUrl,
-        media_type: mediaUrl ? 'image' : undefined
-      });
+        media_type: selectedMedia?.type
+      }).select().single();
 
       if (error) throw error;
-
-      setNewPostContent('');
-      removeImage();
-
-      // Refresh manually as fallback
-      fetchPosts();
 
     } catch (error) {
       console.error("Error creating post:", error);
       alert("Failed to post. Please try again.");
+      // Rollback
+      setPosts(prev => prev.filter(p => p.id !== tempId));
     } finally {
       setIsPosting(false);
     }
@@ -189,13 +216,54 @@ const FeedView: React.FC = () => {
     setPosts(prev => prev.filter(p => p.id !== id));
   };
 
+  const handlePinPost = async (id: string, currentPinStatus: boolean) => {
+    // Optimistic Update
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, is_pinned: !currentPinStatus } : p)); // Note: Post type needs is_pinned
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({ is_pinned: !currentPinStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error("Error pinning post:", error);
+      // Revert
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, is_pinned: currentPinStatus } : p));
+      alert("Failed to pin post.");
+    }
+  };
+
   useEffect(() => {
     fetchPosts();
 
     const channel = supabase
       .channel('public:posts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' },
-        () => fetchPosts()
+        (payload) => {
+          // If we just created a post (tempId exists), we might want to ignore or handle
+          // simpler to just refetch or let handleCreatePost manage it. 
+          // Refetch is safest for consistency.
+          fetchPosts();
+        }
+      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'posts' },
+        (payload) => {
+          // Update local state without full refetch for smoothness
+          setPosts(prev => prev.map(p => p.id === payload.new.id ? {
+            ...p,
+            content: payload.new.content,
+            is_pinned: payload.new.is_pinned,
+            likes: payload.new.likes_count,
+            comments: payload.new.comments_count
+          } : p));
+        }
+      )
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'posts' },
+        (payload) => {
+          setPosts(prev => prev.filter(p => p.id !== payload.old.id));
+        }
       )
       .subscribe();
 
@@ -208,6 +276,7 @@ const FeedView: React.FC = () => {
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
       {/* Header Tabs */}
       <div className="flex border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm z-10 pt-2">
+
         <button
           onClick={() => setActiveTab('foryou')}
           className="flex-1 py-3 text-center relative"
@@ -299,11 +368,15 @@ const FeedView: React.FC = () => {
               )}
             </div>
 
-            {imagePreview && (
+            {mediaPreview && (
               <div className="relative mt-2 rounded-2xl overflow-hidden group w-fit">
-                <img src={imagePreview} alt="Preview" className="max-h-[200px] object-cover rounded-xl" />
+                {selectedMedia?.type === 'video' ? (
+                  <video src={mediaPreview} className="max-h-[200px] object-cover rounded-xl" controls />
+                ) : (
+                  <img src={mediaPreview} alt="Preview" className="max-h-[200px] object-cover rounded-xl" />
+                )}
                 <button
-                  onClick={removeImage}
+                  onClick={removeMedia}
                   className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X size={16} />
@@ -315,17 +388,17 @@ const FeedView: React.FC = () => {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded-full transition-colors"
-                title="Add Image"
+                title="Add Image or Video"
               >
                 <ImageIcon size={20} />
               </button>
-              <button className="hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded-full transition-colors"><Sparkles size={20} /></button>
+
             </div>
             <input
               type="file"
               ref={fileInputRef}
-              onChange={handleImageSelect}
-              accept="image/*"
+              onChange={handleMediaSelect}
+              accept="image/*,video/*"
               className="hidden"
             />
           </div>
@@ -345,6 +418,7 @@ const FeedView: React.FC = () => {
                 key={post.id}
                 post={post}
                 onDelete={handleDeletePost}
+                onPin={(id) => handlePinPost(id, post.is_pinned || false)}
                 onMediaClick={(url) => setViewingImage(url)}
               />
             ))

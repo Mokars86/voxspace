@@ -134,43 +134,80 @@ const SpaceDetail: React.FC = () => {
         if ((!newPostContent.trim() && !postMedia) || !user) return;
 
         setUploading(true);
+
+        // Optimistic Update
+        const tempId = `temp-${Date.now()}`;
+        const optimisticPost: Post = {
+            id: tempId,
+            author: {
+                id: user.id,
+                name: user.user_metadata?.full_name || 'Me',
+                username: user.user_metadata?.username || 'user',
+                avatar: user.user_metadata?.avatar_url || '',
+                isVerified: false
+            },
+            content: newPostContent,
+            timestamp: "Just now",
+            likes: 0,
+            comments: 0,
+            reposts: 0,
+            media: previewUrl || undefined,
+            media_type: postMediaType || undefined, // Use current state or default
+            isLiked: false,
+            is_pinned: false
+        };
+
+        setPosts(prev => [optimisticPost, ...prev]);
+
+        // Clear Form Immediately
+        const tempContent = newPostContent;
+        const tempMedia = postMedia;
+        const tempMediaType = postMediaType;
+
+        setNewPostContent('');
+        setPostMedia(null);
+        setPostMediaType(null);
+        setPreviewUrl(null);
+
         try {
             let mediaUrl = '';
             let mediaType = null;
 
-            if (postMedia) {
-                const ext = postMediaType === 'audio' ? 'webm' : postMedia instanceof File ? postMedia.name.split('.').pop() : 'jpg';
+            if (tempMedia) {
+                const ext = tempMediaType === 'audio' ? 'webm' : tempMedia instanceof File ? tempMedia.name.split('.').pop() : 'jpg';
                 const fileName = `space-post-${Date.now()}.${ext}`;
-                // Usage of new bucket
-                const { error: uploadError } = await supabase.storage.from('space-media').upload(fileName, postMedia);
+                // Usage of proven bucket
+                const { error: uploadError } = await supabase.storage.from('post_media').upload(fileName, tempMedia);
 
                 if (uploadError) throw uploadError;
 
-                const { data } = supabase.storage.from('space-media').getPublicUrl(fileName);
+                const { data } = supabase.storage.from('post_media').getPublicUrl(fileName);
                 mediaUrl = data.publicUrl;
-                mediaType = postMediaType;
+                mediaType = tempMediaType;
             }
 
             const { error } = await supabase.from('posts').insert({
                 space_id: id,
                 user_id: user.id,
-                content: newPostContent,
-                media: mediaUrl || null,
-                media_type: mediaType
+                content: tempContent,
+                media_url: mediaUrl || null,
+                media_type: mediaType || undefined // FIX: Send undefined if null to use DB default
             });
 
             if (error) throw error;
 
-            // Reset
-            setNewPostContent('');
-            setPostMedia(null);
-            setPostMediaType(null);
-            setPreviewUrl(null);
-            fetchPosts();
+            fetchPosts(); // Refresh to get real ID
 
         } catch (error: any) {
             console.error("Post failed:", error);
             alert("Failed to post: " + error.message);
+            // Rollback
+            setPosts(prev => prev.filter(p => p.id !== tempId));
+            // Restore form state? 
+            setNewPostContent(tempContent);
+            setPostMedia(tempMedia);
+            setPostMediaType(tempMediaType);
+            if (tempMedia) setPreviewUrl(URL.createObjectURL(tempMedia as any)); // Re-create preview
         } finally {
             setUploading(false);
         }

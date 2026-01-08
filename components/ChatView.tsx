@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Edit, Archive, CheckCheck, Loader2, Phone, ArrowDownLeft, ArrowUpRight, QrCode } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Edit, Archive, CheckCheck, Loader2, Phone, ArrowDownLeft, ArrowUpRight, QrCode, Lock } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatPreview } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
-
+import PinModal from './PinModal';
 
 const ChatView: React.FC = () => {
   const navigate = useNavigate();
@@ -18,6 +18,18 @@ const ChatView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'chats' | 'calls'>('chats');
   const [callLogs, setCallLogs] = useState<any[]>([]);
 
+  // Lock specific state
+  const [pinModal, setPinModal] = useState<{ isOpen: boolean, mode: 'create' | 'enter' | 'confirm', chatId?: string, action?: 'open' | 'toggleLock' }>({ isOpen: false, mode: 'enter' });
+  const [userPin, setUserPin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      supabase.from('profiles').select('chat_lock_pin').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (data) setUserPin(data.chat_lock_pin);
+        });
+    }
+  }, [user]);
 
   const fetchCallLogs = async () => {
     if (!user) return;
@@ -48,6 +60,7 @@ const ChatView: React.FC = () => {
       fetchCallLogs();
     }
   }, [user, viewMode]);
+
   const fetchChats = async () => {
     if (!user) return;
     setLoading(true);
@@ -55,7 +68,7 @@ const ChatView: React.FC = () => {
       // 1. Get all chats where the current user is a participant
       const { data: myChats, error: myChatsError } = await supabase
         .from('chat_participants')
-        .select('chat_id, is_archived, is_pinned, status, chats(id, name, is_group)')
+        .select('chat_id, is_archived, is_pinned, is_locked, status, chats(id, name, is_group)')
         .eq('user_id', user.id);
 
       if (myChatsError) throw myChatsError;
@@ -136,6 +149,10 @@ const ChatView: React.FC = () => {
           }
         }
 
+        if (myChat.is_locked) {
+          previewText = '🔒 Locked Message';
+        }
+
         return {
           id: chatInfo?.id,
           name: name,
@@ -146,6 +163,7 @@ const ChatView: React.FC = () => {
           isOnline: isOnline,
           isArchived: myChat.is_archived,
           isPinned: myChat.is_pinned,
+          isLocked: myChat.is_locked,
           isGroup: chatInfo?.is_group ?? false,
           status: myChat.status || 'accepted'
         };
@@ -285,10 +303,6 @@ const ChatView: React.FC = () => {
     const matchesFilter = (chat.name || '').toLowerCase().includes((filter || '').toLowerCase());
 
     // Status Logic
-    // If 'requests' -> status must be 'pending'
-    // If 'archived' -> isArchived true
-    // If 'all' -> status 'accepted' AND isArchived false
-
     let matchesTab = false;
     if (activeTab === 'requests') {
       matchesTab = chat.status === 'pending';
@@ -301,15 +315,59 @@ const ChatView: React.FC = () => {
 
     return matchesFilter && matchesTab;
   }).sort((a, b) => {
-    // Sort: Pinned first, then by date (implied by array order since we sorted messages, but stricter sort logic here is good)
+    // Sort: Pinned first, then by date 
     if (a.isPinned && !b.isPinned) return -1;
     if (!a.isPinned && b.isPinned) return 1;
     return 0; // Existing order preserved (created_at desc)
   });
 
+  const handlePinSubmit = async (pin: string) => {
+    // 1. Create PIN Flow
+    if (pinModal.mode === 'create') {
+      const { error } = await supabase.from('profiles').update({ chat_lock_pin: pin }).eq('id', user!.id);
+      if (error) {
+        alert("Failed to create PIN");
+        return;
+      }
+      setUserPin(pin);
+
+      if (pinModal.chatId && pinModal.action === 'toggleLock') {
+        toggleChatLock(pinModal.chatId, false); // Current status was false
+      }
+      setPinModal({ isOpen: false, mode: 'enter' });
+      return;
+    }
+
+    // 2. Verify PIN Flow (Enter/Confirm)
+    if (pin !== userPin) {
+      alert("Incorrect PIN");
+      return;
+    }
+
+    // PIN Correct
+    if (pinModal.action === 'open' && pinModal.chatId) {
+      navigate(`/chat/${pinModal.chatId}`);
+    } else if (pinModal.action === 'toggleLock' && pinModal.chatId) {
+      const chat = chats.find(c => c.id === pinModal.chatId);
+      if (chat) toggleChatLock(chat.id, chat.isLocked || false);
+    }
+    setPinModal({ isOpen: false, mode: 'enter' });
+  };
+
+  const toggleChatLock = async (chatId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('chat_participants')
+      .update({ is_locked: !currentStatus })
+      .eq('chat_id', chatId)
+      .eq('user_id', user!.id);
+
+    if (error) alert("Failed to update lock status");
+    else fetchChats();
+  };
+
   // Long Press Logic
-  const longPressTimer = React.useRef<any>(null);
-  const isLongPress = React.useRef(false); // Ref to track if current interaction is a LP to prevent click
+  const longPressTimer = useRef<any>(null);
+  const isLongPress = useRef(false);
   const [contextMenuChat, setContextMenuChat] = useState<ChatPreview | null>(null);
 
   const startPress = (chat: ChatPreview) => {
@@ -328,9 +386,22 @@ const ChatView: React.FC = () => {
     }
   };
 
-  const handleChatClick = (chatId: string) => {
+  const handleChatClick = (chat: ChatPreview) => {
     if (isLongPress.current) return;
-    navigate(`/chat/${chatId}`);
+
+    if (chat.isLocked) {
+      setPinModal({ isOpen: true, mode: 'enter', chatId: chat.id, action: 'open' });
+    } else {
+      navigate(`/chat/${chat.id}`);
+    }
+  };
+
+  const initiateLockAction = (chat: ChatPreview) => {
+    if (!userPin) {
+      setPinModal({ isOpen: true, mode: 'create', chatId: chat.id, action: 'toggleLock' });
+    } else {
+      setPinModal({ isOpen: true, mode: 'enter', chatId: chat.id, action: 'toggleLock' });
+    }
   };
 
   return (
@@ -437,7 +508,7 @@ const ChatView: React.FC = () => {
           filteredChats.map((chat) => (
             <div
               key={chat.id}
-              onClick={() => handleChatClick(chat.id)}
+              onClick={() => handleChatClick(chat)}
               onMouseDown={() => startPress(chat)}
               onMouseUp={cancelPress}
               onMouseLeave={cancelPress}
@@ -454,7 +525,12 @@ const ChatView: React.FC = () => {
                     (chat.name || '?')[0]
                   )}
                 </div>
-                {chat.isOnline && (
+                {chat.isLocked && (
+                  <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center backdrop-blur-[1px]">
+                    <Lock size={16} className="text-white" />
+                  </div>
+                )}
+                {chat.isOnline && !chat.isLocked && (
                   <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
                 )}
               </div>
@@ -468,7 +544,7 @@ const ChatView: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <p className={cn("text-sm truncate pr-2", chat.unread > 0 ? "text-gray-900 dark:text-white font-medium" : "text-gray-500 dark:text-gray-400")}>
+                  <p className={cn("text-sm truncate pr-2", (chat.unread > 0 || chat.isLocked) ? "text-gray-900 dark:text-white font-medium" : "text-gray-500 dark:text-gray-400")}>
                     {chat.status === 'pending' ? 'Message Request' : chat.lastMessage}
                   </p>
 
@@ -513,6 +589,20 @@ const ChatView: React.FC = () => {
             </div>
 
             <div className="space-y-2">
+              {/* Lock Button */}
+              <button
+                onClick={() => {
+                  initiateLockAction(contextMenuChat);
+                  setContextMenuChat(null);
+                }}
+                className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left font-medium dark:text-gray-200"
+              >
+                <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex items-center justify-center">
+                  <Lock size={20} className={contextMenuChat.isLocked ? "text-[#ff1744]" : ""} />
+                </div>
+                {contextMenuChat.isLocked ? 'Unlock Chat' : 'Lock Chat'}
+              </button>
+
               <button
                 onClick={(e) => {
                   handlePin(e, contextMenuChat.id, contextMenuChat.isPinned || false);
@@ -612,8 +702,14 @@ const ChatView: React.FC = () => {
         )
       }
 
+      <PinModal
+        isOpen={pinModal.isOpen}
+        mode={pinModal.mode}
+        onClose={() => setPinModal({ ...pinModal, isOpen: false })}
+        onSuccess={handlePinSubmit}
+      />
 
-    </div >
+    </div>
   );
 };
 

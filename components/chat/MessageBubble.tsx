@@ -7,7 +7,7 @@ export interface ChatMessage {
     text: string;
     sender: 'me' | 'them';
     time: string;
-    type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'buzz' | 'location' | 'audio';
+    type: 'text' | 'image' | 'voice' | 'video' | 'file' | 'buzz' | 'location' | 'audio' | 'contact';
     status: 'sent' | 'delivered' | 'read';
     mediaUrl?: string;
     metadata?: any;
@@ -33,7 +33,7 @@ export interface MessageProps {
     onEdit?: (msgId: string, newText: string) => void;
     onDelete?: (msgId: string) => void;
     onForward?: (msg: any) => void;
-    onMediaClick?: (url: string, type: 'image' | 'video') => void;
+    onMediaClick?: (url: string, type: 'image' | 'video', allUrls?: string[]) => void;
     onViewOnce?: (msg: ChatMessage) => void;
     onPin?: (msg: ChatMessage) => void;
     onSaveToBag?: (msg: ChatMessage) => void;
@@ -329,17 +329,50 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                         </div>
                     ) : (
                         <>
-                            {/* Media: Image */}
-                            {message.type === 'image' && message.mediaUrl && (
-                                <div
-                                    className="mb-1 overflow-hidden rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
-                                    onClick={(e) => {
-                                        e.stopPropagation(); // Prevent message bubble click/long-press interactions if any
-                                        onMediaClick && onMediaClick(message.mediaUrl!, 'image');
-                                    }}
-                                >
-                                    <img src={message.mediaUrl} alt="Shared" className="w-full h-auto max-h-[300px] object-cover" />
-                                </div>
+                            {/* Media: Image / Multi-Image */}
+                            {message.type === 'image' && (
+                                message.mediaUrls && message.mediaUrls.length > 1 ? (
+                                    <div className="mb-1 grid gap-0.5 overflow-hidden rounded-lg cursor-pointer max-w-[300px]"
+                                        style={{
+                                            gridTemplateColumns: message.mediaUrls.length === 2 ? '1fr 1fr' : '1fr 1fr',
+                                            gridTemplateRows: message.mediaUrls.length > 2 ? '1fr 1fr' : 'auto'
+                                        }}
+                                    >
+                                        {message.mediaUrls.slice(0, 4).map((url, idx) => (
+                                            <div
+                                                key={idx}
+                                                className={cn(
+                                                    "relative overflow-hidden aspect-square",
+                                                    message.mediaUrls!.length === 3 && idx === 0 ? "col-span-2 aspect-[2/1]" : ""
+                                                )}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onMediaClick && onMediaClick(url, 'image', message.mediaUrls!);
+                                                }}
+                                            >
+                                                <img src={url} alt="Shared" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                                                {/* Overlay for +X more */}
+                                                {idx === 3 && message.mediaUrls!.length > 4 && (
+                                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xl font-bold">
+                                                        +{message.mediaUrls!.length - 4}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    message.mediaUrl && (
+                                        <div
+                                            className="mb-1 overflow-hidden rounded-lg cursor-pointer hover:opacity-95 transition-opacity"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onMediaClick && onMediaClick(message.mediaUrl!, 'image', [message.mediaUrl!]);
+                                            }}
+                                        >
+                                            <img src={message.mediaUrl} alt="Shared" className="w-full h-auto max-h-[300px] object-cover" />
+                                        </div>
+                                    )
+                                )
                             )}
 
                             {/* Media: Video */}
@@ -397,23 +430,56 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                     )}
 
                     {/* Location */}
-                    {message.type === 'location' && (
-                        <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${message.metadata?.lat},${message.metadata?.lng}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block overflow-hidden rounded-xl mb-1"
-                        >
-                            {/* Static Map Placeholder - In real app use Google Maps Static API or Leaflet */}
-                            <div className="bg-gray-200 h-32 w-full flex items-center justify-center relative">
-                                <MapPin size={32} className="text-primary drop-shadow-md z-10" />
-                                <div className="absolute inset-0 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover opacity-20"></div>
+                    {message.type === 'location' && message.metadata && (
+                        <div className="flex flex-col gap-2 min-w-[200px]">
+                            <div className="flex items-center gap-2 font-bold mb-1">
+                                <MapPin size={20} className="text-[#ff1744]" />
+                                <span>Location Shared</span>
                             </div>
-                            <div className={cn("p-2 text-sm", isMe ? "bg-white/10" : "bg-gray-50")}>
-                                <div className="font-bold flex items-center gap-1"><MapPin size={12} /> Location Shared</div>
-                                <div className="opacity-80 text-xs truncate">{message.metadata?.lat?.toFixed(5)}, {message.metadata?.lng?.toFixed(5)}</div>
+                            <div className="h-32 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center relative overflow-hidden">
+                                <div className="absolute inset-0 opacity-50 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover bg-center" />
+                                <div className="z-10 bg-white/80 dark:bg-black/50 p-2 rounded-lg backdrop-blur-sm text-xs font-mono">
+                                    {Number(message.metadata.lat).toFixed(4)}, {Number(message.metadata.lng).toFixed(4)}
+                                </div>
                             </div>
-                        </a>
+                            <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${message.metadata.lat},${message.metadata.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block text-center py-2 bg-gray-100 dark:bg-gray-700 text-blue-500 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                Open in Maps
+                            </a>
+                        </div>
+                    )}
+
+                    {/* Contact */}
+                    {message.type === 'contact' && message.metadata && (
+                        <div className="flex flex-col gap-3 min-w-[220px] bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                                </div>
+                                <div className="overflow-hidden">
+                                    <p className="font-bold text-gray-900 dark:text-white truncate">{message.metadata.name}</p>
+                                    <p className="text-sm text-gray-500 truncate">{message.metadata.phone}</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <a
+                                    href={`tel:${message.metadata.phone}`}
+                                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                                >
+                                    Call
+                                </a>
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(message.metadata.phone)}
+                                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                                >
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
                     )}
 
                     {/* Text Content */}
@@ -467,19 +533,20 @@ const MessageBubble: React.FC<MessageProps> = ({ message, onSwipeReply, onReact,
                         )}
                     </div>
                 </div>
+            </div>
 
-                {/* Reactions */}
-                {message.reactions && Object.keys(message.reactions).length > 0 && (
+
+            {/* Reactions */}
+            {
+                message.reactions && Object.keys(message.reactions).length > 0 && (
                     <div className="absolute -bottom-2 -left-2 bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700 rounded-full px-1.5 py-0.5 flex text-xs">
                         {Object.entries(message.reactions).map(([emoji, count]) => (
                             <span key={emoji}>{emoji} {(count as number) > 1 ? count : ''}</span>
                         ))}
                     </div>
-                )}
-            </div>
-
-            {/* Action Menu Trigger (Invisible but accessible for long press logic later) */}
-        </div>
+                )
+            }
+        </div >
     );
 };
 
