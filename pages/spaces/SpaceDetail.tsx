@@ -350,6 +350,10 @@ const SpaceDetail: React.FC = () => {
         }
     };
 
+    const handleDeletePost = (id: string) => {
+        setPosts(prev => prev.filter(p => p.id !== id));
+    };
+
     const handlePin = async (postId: string) => {
         const post = posts.find(p => p.id === postId);
         if (!post) return;
@@ -644,7 +648,7 @@ const SpaceDetail: React.FC = () => {
                                             <Pin size={10} /> Pinned
                                         </div>
                                     )}
-                                    <PostCard post={post} onPin={isOwner ? handlePin : undefined} />
+                                    <PostCard post={post} onPin={isOwner ? handlePin : undefined} onDelete={handleDeletePost} />
                                 </div>
                             ))
                         ) : (

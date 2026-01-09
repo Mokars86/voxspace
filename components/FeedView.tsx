@@ -39,6 +39,7 @@ const FeedView: React.FC = () => {
             likes_count,
             comments_count,
             reposts_count,
+            is_pinned,
             user_id,
             profiles:user_id (
                 full_name,

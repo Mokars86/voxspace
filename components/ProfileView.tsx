@@ -157,7 +157,8 @@ const ProfileView: React.FC = () => {
             <span>My QR Code</span>
           </button>
           <RouterLink
-            to={{ pathname: '/chats', state: { tab: 'archived' } }}
+            to="/chats"
+            state={{ tab: 'archived' }}
             className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
           >
             <Archive size={18} />

@@ -85,6 +85,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin, onMediaClick
     const [editContent, setEditContent] = useState(post.content);
     const [displayContent, setDisplayContent] = useState(post.content);
 
+    // Sync content from props when not editing
+    useEffect(() => {
+        if (!isEditing) {
+            setDisplayContent(post.content);
+            setEditContent(post.content);
+        }
+    }, [post.content, isEditing]);
+
     // Comments
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState<Comment[]>([]);
@@ -349,7 +357,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onDelete, onPin, onMediaClick
                                     <div className="absolute right-0 top-8 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 w-48 overflow-hidden py-1 animate-in zoom-in-95 duration-100 origin-top-right">
                                         {isAuthor && (
                                             <>
-                                                <button onClick={(e) => { e.stopPropagation(); onDelete && onDelete(post.id); }} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 font-medium flex items-center gap-2">
+                                                <button onClick={(e) => { e.stopPropagation(); handleDelete(); }} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 font-medium flex items-center gap-2">
                                                     <Trash2 size={14} /> Delete
                                                 </button>
                                                 <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); setMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 font-medium flex items-center gap-2">

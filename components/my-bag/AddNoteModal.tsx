@@ -5,9 +5,11 @@ interface AddNoteModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (title: string, content: string) => Promise<void>;
+    currentUsage?: number;
+    maxStorage?: number;
 }
 
-const AddNoteModal: React.FC<AddNoteModalProps> = ({ isOpen, onClose, onSave }) => {
+const AddNoteModal: React.FC<AddNoteModalProps> = ({ isOpen, onClose, onSave, currentUsage = 0, maxStorage = Infinity }) => {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
@@ -17,6 +19,15 @@ const AddNoteModal: React.FC<AddNoteModalProps> = ({ isOpen, onClose, onSave }) 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!content.trim()) return;
+
+        // Check size
+        const estimatedSize = new TextEncoder().encode(title + content).length;
+        if (currentUsage + estimatedSize > maxStorage) {
+            alert(`Storage limit exceeded! You need ${(estimatedSize / 1024).toFixed(1)}KB more space.`);
+            return;
+        }
+
+        setLoading(true);
 
         setLoading(true);
         try {

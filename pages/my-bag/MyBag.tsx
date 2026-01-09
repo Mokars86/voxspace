@@ -9,10 +9,11 @@ import { ArrowLeft, Search, Plus, Settings, Lock, Unlock, Loader2, Grid as GridI
 import { cn } from '../../lib/utils';
 import AddNoteModal from '../../components/my-bag/AddNoteModal';
 import BagSettingsModal from '../../components/my-bag/BagSettingsModal';
+import BagItemPreviewModal from '../../components/my-bag/BagItemPreviewModal';
 
 const MyBag: React.FC = () => {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const [isLocked, setIsLocked] = useState(true); // Default to locked
     const [pin, setPin] = useState('');
     const [showAddNote, setShowAddNote] = useState(false);
@@ -22,9 +23,16 @@ const MyBag: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [filter, setFilter] = useState<'all' | 'messages' | 'media' | 'files' | 'notes' | 'links'>('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const [previewItem, setPreviewItem] = useState<MyBagItem | null>(null);
+    const [usedStorage, setUsedStorage] = useState(0);
+
+    const EXEMPT_USERS = ["Mubarik Tuahir Ali", "Kausara Mohammed"];
+    const isExempt = profile?.full_name && EXEMPT_USERS.includes(profile.full_name);
+    const MAX_STORAGE_BYTES = isExempt ? Infinity : 50 * 1024 * 1024; // 50MB or Unlimited
 
     // Mock PIN - In reality, fetch hashed PIN from secure storage or require App Auth
-    const USER_PIN = '1234';
+    // PIN Management
+    const [currentPin, setCurrentPin] = useState(() => localStorage.getItem('voxspace_bag_pin') || '1234');
 
     useEffect(() => {
         if (!isLocked && user) {
@@ -53,6 +61,7 @@ const MyBag: React.FC = () => {
                 console.warn("Error fetching bag items (table might not exist yet):", error);
             } else if (data) {
                 setItems(data as MyBagItem[]);
+                calculateStorage(data as MyBagItem[]);
                 // Sync to local
                 await db.my_bag.bulkPut(data as MyBagItem[]);
             }
@@ -63,24 +72,86 @@ const MyBag: React.FC = () => {
         }
     };
 
+    const calculateStorage = (currentItems: MyBagItem[]) => {
+        const total = currentItems.reduce((acc, item) => {
+            // Prioritize metadata size, fallback to content string length (approx for text)
+            return acc + (item.metadata?.size || item.content.length || 0);
+        }, 0);
+        setUsedStorage(total);
+    };
+
+    // Update storage when items change (e.g. after delete/add)
+    useEffect(() => {
+        calculateStorage(items);
+    }, [items]);
+
     const handleUnlock = (e: React.FormEvent) => {
         e.preventDefault();
-        if (pin === USER_PIN) {
+        if (pin === currentPin) {
             setIsLocked(false);
         } else {
-            alert("Incorrect PIN (Default is 1234)");
+            alert("Incorrect PIN");
             setPin('');
         }
     };
 
+    const handleChangePin = (oldPin: string, newPin: string): boolean => {
+        if (oldPin === currentPin) {
+            localStorage.setItem('voxspace_bag_pin', newPin);
+            setCurrentPin(newPin);
+            return true;
+        }
+        return false;
+    };
+
     const handleItemClick = (item: MyBagItem) => {
-        if (item.type === 'link') {
-            window.open(item.content, '_blank');
-        } else if (item.type === 'image' || item.type === 'video') {
-            // Show media viewer (simplified alert for now)
-            alert(`Opening ${item.type}: ${item.title}`);
-        } else {
-            alert(item.content);
+        setPreviewItem(item);
+    };
+
+    const handleDeleteItem = async (item: MyBagItem) => {
+        if (!confirm(`Permanently delete "${item.title || 'this item'}"?`)) return;
+
+        try {
+            // Delete from Supabase
+            if (user) {
+                const { error } = await supabase.from('my_bag_items').delete().eq('id', item.id);
+                if (error) throw error;
+            }
+
+            // Delete from Local DB
+            await db.my_bag.delete(item.id);
+
+            // Update UI
+            setItems(prev => prev.filter(i => i.id !== item.id));
+            setPreviewItem(null); // Close modal if open
+
+        } catch (error) {
+            console.error("Delete failed", error);
+            alert("Failed to delete item.");
+        }
+    };
+
+    const handleDownloadItem = async (item: MyBagItem) => {
+        if (!item.content) return;
+        try {
+            // If it's a blob/file URL or remote URL
+            const response = await fetch(item.content);
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            // Infer name
+            const ext = item.type === 'image' ? 'jpg' : item.type === 'video' ? 'mp4' : 'txt';
+            a.download = item.title ? `${item.title}.${ext}` : `downloaded-file.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            alert("Download started!");
+        } catch (error) {
+            console.error("Download failed", error);
+            alert("Could not download file.");
         }
     };
 
@@ -166,6 +237,34 @@ const MyBag: React.FC = () => {
                 )}
             </header>
 
+            {/* Storage Indicator */}
+            {!isExempt && (
+                <div className="bg-white dark:bg-gray-900 px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Storage Used</span>
+                        <span>
+                            {(usedStorage / (1024 * 1024)).toFixed(1)} MB / 50 MB
+                        </span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        <div
+                            className={cn(
+                                "h-full transition-all duration-500 rounded-full",
+                                usedStorage / MAX_STORAGE_BYTES > 0.9 ? "bg-red-500" :
+                                    usedStorage / MAX_STORAGE_BYTES > 0.7 ? "bg-yellow-500" : "bg-green-500"
+                            )}
+                            style={{ width: `${Math.min((usedStorage / MAX_STORAGE_BYTES) * 100, 100)}%` }}
+                        />
+                    </div>
+                </div>
+            )}
+            {isExempt && (
+                <div className="bg-white dark:bg-gray-900 px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center text-xs text-green-600 font-medium">
+                    <span>Storage Status</span>
+                    <span>Unlimited (Premium)</span>
+                </div>
+            )}
+
             {/* Filter Tabs */}
             <div className="overflow-x-auto whitespace-nowrap px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 scrollbar-hide">
                 {(['all', 'messages', 'media', 'files', 'notes', 'links'] as const).map(f => (
@@ -209,8 +308,17 @@ const MyBag: React.FC = () => {
             </div>
 
             <button
-                onClick={() => setShowAddNote(true)}
-                className="fixed bottom-6 right-6 w-14 h-14 bg-[#ff1744] text-white rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform z-20"
+                onClick={() => {
+                    if (usedStorage >= MAX_STORAGE_BYTES) {
+                        alert("Storage limit reached (50MB). Please delete items to free up space.");
+                        return;
+                    }
+                    setShowAddNote(true);
+                }}
+                className={cn(
+                    "fixed bottom-6 right-6 w-14 h-14 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform z-20",
+                    usedStorage >= MAX_STORAGE_BYTES ? "bg-gray-400 cursor-not-allowed" : "bg-[#ff1744]"
+                )}
             >
                 <Plus size={28} />
             </button>
@@ -218,6 +326,8 @@ const MyBag: React.FC = () => {
             <AddNoteModal
                 isOpen={showAddNote}
                 onClose={() => setShowAddNote(false)}
+                currentUsage={usedStorage}
+                maxStorage={MAX_STORAGE_BYTES}
                 onSave={async (title, content) => {
                     if (!user) return;
                     const newItem: any = {
@@ -249,6 +359,15 @@ const MyBag: React.FC = () => {
                     setPin('');
                     setShowSettings(false);
                 }}
+                onChangePin={handleChangePin}
+            />
+
+            <BagItemPreviewModal
+                isOpen={!!previewItem}
+                onClose={() => setPreviewItem(null)}
+                item={previewItem}
+                onDelete={handleDeleteItem}
+                onDownload={handleDownloadItem}
             />
         </div>
     );

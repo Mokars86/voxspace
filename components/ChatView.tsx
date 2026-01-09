@@ -443,14 +443,7 @@ const ChatView: React.FC = () => {
               >
                 Requests
               </button>
-              {activeTab === 'archived' && (
-                <button
-                  onClick={() => setActiveTab('archived')}
-                  className={cn("px-4 py-1 rounded-full text-xs font-bold transition-all bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm")}
-                >
-                  Archived
-                </button>
-              )}
+
             </div>
           )}
         </div>
